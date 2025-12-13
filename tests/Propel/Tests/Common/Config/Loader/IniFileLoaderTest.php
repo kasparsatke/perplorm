@@ -79,7 +79,7 @@ EOF;
     public function testIniFileHasInvalidContent()
     {
         $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage("The configuration file 'nonvalid.ini' has invalid content.");
+        $this->expectExceptionMessage("The configuration file `vfs://root/nonvalid.ini` has invalid content.");
 
         $content = <<<EOF
 {not ini content}
@@ -239,7 +239,7 @@ EOF;
     public function testIniFileNotReadableThrowsException()
     {
         $this->expectException(InputOutputException::class);
-        $this->expectExceptionMessage("You don't have permissions to access configuration file notreadable.ini.");
+        $this->expectExceptionMessage("You don't have permissions to access configuration file `vfs://root/notreadable.ini`.");
 
         $content = <<<EOF
 foo = bar

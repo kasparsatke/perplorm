@@ -9,7 +9,6 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 use function file_get_contents;
 use function is_array;
-use function is_readable;
 use function sprintf;
 
 /**
@@ -20,8 +19,7 @@ class YamlFileLoader extends FileLoader
     /**
      * Loads a Yaml file.
      *
-     * @param string $resource The resource
-     * @param string|null $type The resource type
+     * @param string $path
      *
      * @throws \Propel\Common\Config\Exception\InputOutputException if configuration file is not readable
      * @throws \Symfony\Component\Yaml\Exception\ParseException if something goes wrong in parsing file
@@ -29,22 +27,15 @@ class YamlFileLoader extends FileLoader
      * @return array
      */
     #[\Override]
-    public function load($resource, $type = null): array
+    protected function loadFileContent(string $path): array
     {
-        $path = $this->locator->locate($resource);
-
-        if (!is_readable($path)) {
-            throw new InputOutputException(sprintf("You don't have permissions to access configuration file `%s`.", $resource));
-        }
-
         $data = file_get_contents($path);
         if (!$data) {
-            throw new InputOutputException(sprintf('Unable to read configuration file `%s`.', $resource));
+            throw new InputOutputException(sprintf('Unable to read configuration file `%s`.', $path));
         }
 
         $content = Yaml::parse($data);
 
-        // config file is empty
         if ($content === null) {
             $content = [];
         }
@@ -53,7 +44,7 @@ class YamlFileLoader extends FileLoader
             throw new ParseException('Unable to parse the configuration file: wrong yaml content.');
         }
 
-        return $this->resolveParams($content); //Resolve parameter placeholders (%name%)
+        return $content;
     }
 
     /**

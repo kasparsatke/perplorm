@@ -111,7 +111,7 @@ EOF;
     public function testXmlFileNotReadableThrowsException()
     {
         $this->expectException(InputOutputException::class);
-        $this->expectExceptionMessage("You don't have permissions to access configuration file notreadable.xml.");
+        $this->expectExceptionMessage("You don't have permissions to access configuration file `vfs://root/notreadable.xml`.");
 
         $content = <<< XML
 <?xml version='1.0' standalone='yes'?>
