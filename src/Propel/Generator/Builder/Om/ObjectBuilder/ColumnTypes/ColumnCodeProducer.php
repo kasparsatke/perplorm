@@ -166,6 +166,14 @@ class ColumnCodeProducer extends AbstractSubsectionCodeProducer
             return "UuidConverter::uuidToBin($attribute, $uuidSwapFlag)";
         }
 
+        if ($this->column->isPhpBackedEnumType()) {
+            return "{$attribute}?->value";
+        }
+
+        if ($this->column->isPhpUnitEnumType()) {
+            return "{$attribute}?->name";
+        }
+
         return $attribute;
     }
 
@@ -204,6 +212,19 @@ class ColumnCodeProducer extends AbstractSubsectionCodeProducer
 
             return "
             $attribute = $valueVariable !== null ? ($className)$valueVariable : null;";
+        } elseif ($col->isPhpBackedEnumType()) {
+            $enumClassName = $this->declareClass($col->getPhpType());
+
+            return "
+            $attribute = ($valueVariable === null) ? null : $enumClassName::from($valueVariable);";
+        } elseif ($col->isPhpUnitEnumType()) {
+            $enumClassName = $this->declareClass($col->getPhpType());
+
+            return "
+            if ($valueVariable !== null && !defined($enumClassName::class . '::' . $valueVariable)) {
+                throw new PropelException(\"Unknown enum item `$valueVariable` for enum '. $enumClassName::class);
+            }
+            $attribute = ($valueVariable === null) ? null : constant($enumClassName::class . '::' . $valueVariable);";
         } elseif ($col->isPhpObjectType()) {
             $constructor = $this->declareClass($col->getPhpType());
 
@@ -241,9 +262,15 @@ class ColumnCodeProducer extends AbstractSubsectionCodeProducer
     {
         $attribute = $this->getAttributeName();
         $defaultValue = $this->getDefaultValueString();
-        if ($this->column->isPhpObjectType()) {
+        if ($this->column->isPhpBackedEnumType()) {
+            $enumClass = $this->declareClass($this->column->getPhpType());
+            $defaultValue = "$enumClass::from($defaultValue)";
+        } elseif ($this->column->isPhpUnitEnumType()) {
+            $enumClass = $this->declareClass($this->column->getPhpType());
+            $defaultValue = "constant($enumClass::class . '::' . $defaultValue)";
+        } elseif ($this->column->isPhpObjectType()) {
             $constructor = $this->declareClass($this->column->getPhpType());
-            $defaultValue = "new $constructor($defaultValue)";
+            $defaultValue = "new $constructor($defaultValue )";
         }
 
         return "
@@ -281,7 +308,13 @@ class ColumnCodeProducer extends AbstractSubsectionCodeProducer
             $attribute = $this->getAttributeName();
 
             $defaultValueString = $this->getDefaultValueString();
-        if ($this->column->isPhpObjectType()) {
+        if ($this->column->isPhpBackedEnumType()) {
+            $assumedClassName = $this->declareClass($this->column->getPhpType());
+            $defaultValueString = "$assumedClassName::from($defaultValueString)";
+        } elseif ($this->column->isPhpUnitEnumType()) {
+            $assumedClassName = $this->declareClass($this->column->getPhpType());
+            $defaultValueString = "constant($assumedClassName::class . '::' . $defaultValueString)";
+        } elseif ($this->column->isPhpObjectType()) {
             $assumedClassName = $this->declareClass($this->column->getPhpType());
             $defaultValueString = "new $assumedClassName($defaultValueString)";
         }
