@@ -26,7 +26,7 @@ class Behavior extends MappingModel
     /**
      * @var string
      */
-    final public const PARAM_NAME_TABLE_MODIFICATION_ORDER = 'order-lateness';
+    final public const PARAM_NAME_TABLE_MODIFICATION_ORDER = 'order-delay';
 
     /**
      * The table object on which the behavior is applied.
