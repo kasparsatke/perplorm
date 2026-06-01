@@ -13,10 +13,14 @@ use Propel\Generator\Model\Schema;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use function array_keys;
+use function array_map;
 use function array_merge;
+use function count;
 use function escapeshellarg;
 use function file_put_contents;
 use function implode;
+use function reset;
 use function shell_exec;
 use function sprintf;
 use function time;
@@ -35,6 +39,7 @@ class MigrationDiffCommand extends AbstractMigrationCommand
         $this
             ->addOption('schema-dir', null, InputOption::VALUE_REQUIRED, 'The directory where the schema files are placed')
             ->addOption('output-dir', null, InputOption::VALUE_REQUIRED, 'The output directory where the migration files are located')
+            ->addOption('print', 'p', InputOption::VALUE_OPTIONAL, 'Output current migration code without creating file.')
             ->addOption('migration-table', null, InputOption::VALUE_REQUIRED, 'Migration table name', null)
             ->addOption('connection', null, InputOption::VALUE_IS_ARRAY | InputOption::VALUE_REQUIRED, 'Connection to use. Example: \'bookstore=mysql:host=127.0.0.1;dbname=test;user=root;password=foobar\' where "bookstore" is your propel database name (used in your schema.xml)', [])
             ->addOption('table-renaming', null, InputOption::VALUE_NONE, 'Detect table renaming', null)
@@ -62,12 +67,14 @@ class MigrationDiffCommand extends AbstractMigrationCommand
         $manager = $this->getMigrationManager();
         $generatorConfig = $this->getGeneratorConfig();
 
+        $isPrint = $input->getOption('print');
+
         $customConnectionData = $input->getOption('connection');
         $this->setUpMigrationManagerAccess($customConnectionData);
 
-        if ($manager->hasPendingMigrations()) {
+        if ($manager->hasPendingMigrations() && !$isPrint) {
             throw new RuntimeException(sprintf(
-                'Uncommitted migrations have been found ; you should either execute or delete them before rerunning the \'diff\' task. %s',
+                'Pending migrations have been found ; you should either execute or delete them before rerunning the \'diff\' task. %s',
                 "\n" . implode("\n", $manager->findUncommittedMigrationFileTimestamps()),
             ));
         }
@@ -166,14 +173,10 @@ class MigrationDiffCommand extends AbstractMigrationCommand
                 continue;
             }
 
-            $output->writeln(sprintf('Structure of database was modified in datasource "%s": %s', $name, $databaseDiff->getDescription()));
+            $output->writeln("Structure of database was modified in datasource \"$name\": " . $databaseDiff->getDescription());
 
             foreach ($databaseDiff->getPossibleRenamedTables() as $fromTableName => $toTableName) {
-                $output->writeln(sprintf(
-                    '<info>Possible table renaming detected: "%s" to "%s". It will be deleted and recreated. Use --table-renaming to only rename it.</info>',
-                    $fromTableName,
-                    $toTableName,
-                ));
+                $output->writeln("<info>Possible table renaming detected: \"$fromTableName\" to \"$toTableName\". It will be deleted and recreated. Use --table-renaming to only rename it.</info>");
             }
 
             $conn = $manager->getAdapterConnection($name);
@@ -188,6 +191,13 @@ class MigrationDiffCommand extends AbstractMigrationCommand
 
         if (!$migrationsUp) {
             $output->writeln('Same XML and database structures for all datasource - no diff to generate');
+
+            return static::CODE_SUCCESS;
+        }
+
+        if ($isPrint) {
+            $forceMultipleDbOutput = count($reversedSchema->getDatabases()) > 1;
+            $output->writeln("\nSQL to migrate DB to schema.xml:" . $this->migrationsToString($migrationsUp, $forceMultipleDbOutput));
 
             return static::CODE_SUCCESS;
         }
@@ -211,5 +221,18 @@ class MigrationDiffCommand extends AbstractMigrationCommand
         }
 
         return static::CODE_SUCCESS;
+    }
+
+    /**
+     * @param array<string, string> $migrations
+     * @param bool $forceMultipleDbOutput
+     *
+     * @return string
+     */
+    protected function migrationsToString(array $migrations, bool $forceMultipleDbOutput): string
+    {
+        return count($migrations) === 1 && !$forceMultipleDbOutput
+            ? reset($migrations)
+            : implode("\n\n", array_map(fn ($dbName, $code) => " - Database $dbName:\n$code", array_keys($migrations), $migrations));
     }
 }
