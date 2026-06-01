@@ -52,10 +52,7 @@ class IniFileLoader extends FileLoader
     }
 
     /**
-     * Loads a resource, merge it with the default configuration array and resolve its parameters.
-     *
-     * @param string $resource The resource
-     * @param string|null $type The resource type
+     * @param string $path The resource
      *
      * @throws \Propel\Common\Config\Exception\InvalidArgumentException When ini file is not valid
      * @throws \InvalidArgumentException if configuration file not found
@@ -63,33 +60,17 @@ class IniFileLoader extends FileLoader
      * @return array The configuration array
      */
     #[\Override]
-    public function load($resource, $type = null): array
+    protected function loadFileContent(string $path): array
     {
         /** @var array<array-key, string|array<array-key, string|array<array-key, string>>>|false $ini */
-        $ini = parse_ini_file($this->getPath($resource), true, INI_SCANNER_RAW);
+        $ini = parse_ini_file($path, true, INI_SCANNER_RAW);
 
         if ($ini === false) {
-            throw new InvalidArgumentException("The configuration file '$resource' has invalid content.");
+            throw new InvalidArgumentException("The configuration file `$path` has invalid content.");
         }
 
-        $ini = $this->parse($ini); //Parse for nested sections
-
-        return $this->resolveParams($ini); //Resolve parameter placeholders (%name%)
-    }
-
-    /**
-     * Parse data from the configuration array, to transform nested sections into associative arrays
-     * and to fix int/float/bool typing
-     *
-     * @param array<array-key, string|array<array-key, string|array<array-key, string>>> $data
-     *
-     * @return array
-     */
-    private function parse(array $data): array
-    {
         $config = [];
-
-        foreach ($data as $section => $value) {
+        foreach ($ini as $section => $value) {
             if (is_array($value)) {
                 $sections = explode($this->nestSeparator, $section);
                 $config = array_merge_recursive($config, $this->buildNestedSection($sections, $value));

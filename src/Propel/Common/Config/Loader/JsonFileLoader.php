@@ -18,30 +18,27 @@ class JsonFileLoader extends FileLoader
     /**
      * Loads an Json file.
      *
-     * @param string $resource The resource
-     * @param string|null $type The resource type
+     * @param string $path The resource
      *
      * @throws \Propel\Common\Config\Exception\JsonParseException if invalid json file
      *
      * @return array
      */
     #[\Override]
-    public function load($resource, $type = null): array
+    protected function loadFileContent(string $path): array
     {
-        $json = file_get_contents($this->getPath($resource));
-
-        $content = [];
-
-        if ($json && $json !== '') {
-            $content = json_decode($json, true);
-            $error = json_last_error();
-
-            if ($error !== JSON_ERROR_NONE) {
-                throw new JsonParseException($error);
-            }
+        $json = file_get_contents($path);
+        if (!$json) {
+            return [];
         }
 
-        return $this->resolveParams($content); //Resolve parameter placeholders (%name%)
+        $content = json_decode($json, true);
+        $error = json_last_error();
+        if ($error !== JSON_ERROR_NONE) {
+            throw new JsonParseException($error);
+        }
+
+        return $content;
     }
 
     /**

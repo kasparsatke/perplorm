@@ -26,8 +26,7 @@ class PhpFileLoader extends FileLoader
     /**
      * Loads a PHP file.
      *
-     * @param string $resource The resource
-     * @param string|null $type The resource type
+     * @param string $path The resource
      *
      * @throws \Propel\Common\Config\Exception\InvalidArgumentException if invalid json file
      * @throws \InvalidArgumentException if configuration file not found
@@ -35,10 +34,8 @@ class PhpFileLoader extends FileLoader
      * @return array
      */
     #[\Override]
-    public function load($resource, $type = null): array
+    protected function loadFileContent(string $path): array
     {
-        $path = $this->getPath($resource);
-
         //Use output buffering because in case $file contains invalid non-php content (i.e. plain text), include() function
         //write it on stdoutput
         ob_start();
@@ -46,10 +43,10 @@ class PhpFileLoader extends FileLoader
         ob_end_clean();
 
         if (!is_array($content)) {
-            throw new InvalidArgumentException("The configuration file '$resource' has invalid content.");
+            throw new InvalidArgumentException("The configuration file `$path` has invalid content.");
         }
 
-        return $this->resolveParams($content); //Resolve parameter placeholders (%name%)
+        return $content;
     }
 
     /**

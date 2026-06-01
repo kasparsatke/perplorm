@@ -108,7 +108,7 @@ EOF;
     public function testJsonFileNotReadableThrowsException()
     {
         $this->expectException(InputOutputException::class);
-        $this->expectExceptionMessage("You don't have permissions to access configuration file notreadable.json.");
+        $this->expectExceptionMessage("You don't have permissions to access configuration file `vfs://root/notreadable.json`.");
 
         $content = <<<EOF
 {

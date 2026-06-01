@@ -6,10 +6,11 @@ namespace Propel\Common\Config;
 
 use Propel\Common\Config\Exception\InvalidArgumentException;
 use Propel\Common\Config\Exception\InvalidConfigurationException;
-use Propel\Common\Config\Loader\DelegatingLoader;
+use Propel\Common\Config\Loader\LoaderResolver;
 use RuntimeException;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException as SymfonyInvalidConfigurationException;
 use Symfony\Component\Config\Definition\Processor;
+use Symfony\Component\Config\Loader\DelegatingLoader;
 use Symfony\Component\Finder\Finder;
 use function array_any;
 use function array_filter;
@@ -228,11 +229,14 @@ class ConfigurationManager
     }
 
     /**
-     * Find a configuration file and loads it into an array.
-     * Default configuration file is named 'propel' and is expected to be found in the current directory
+     * Find a configuration file and load it as array.
+     *
+     * Default configuration file is named 'perpl' and is expected to be found in the current directory
      * or a subdirectory named '/conf' or '/config'. It can have one of the supported extensions (.ini, .properties,
      * .json, .yaml, .yml, .xml, .php, .inc).
+     *
      * Only one configuration file is supposed to be found.
+     *
      * This method also looks for a '.dist' configuration file and loads it.
      *
      * @param string $path Configuration file name or directory in which resides the configuration file.
@@ -242,14 +246,13 @@ class ConfigurationManager
      */
     protected function loadConfig(string $path, array $extraConf = []): array
     {
-        if (!is_dir($path)) {
-            $filesOrderedByPrecedence = [
+        $filesOrderedByPrecedence = is_dir($path)
+            ? $this->getConfigFileNamesFromDirectory($path)
+            : [
                 self::PRECEDENCE_DIST => $path . '.dist',
                 self::PRECEDENCE_NORMAL => $path,
             ];
-        } else {
-            $filesOrderedByPrecedence = $this->getConfigFileNamesFromDirectory($path);
-        }
+
         ksort($filesOrderedByPrecedence);
 
         $configs = [];
@@ -350,13 +353,9 @@ class ConfigurationManager
      */
     private function loadFile(string $fileName): array
     {
-        if (!file_exists($fileName)) {
-            return [];
-        }
-
-        $delegatingLoader = new DelegatingLoader();
-
-        return $delegatingLoader->load($fileName);
+        return file_exists($fileName)
+            ? (new DelegatingLoader(new LoaderResolver()))->load($fileName)
+            : [];
     }
 
     /**

@@ -78,7 +78,7 @@ EOF;
     public function testPhpFileHasInvalidContent()
     {
         $this->expectException(PropelInvalidArgumentException::class);
-        $this->expectExceptionMessage("The configuration file 'nonvalid.php' has invalid content.");
+        $this->expectExceptionMessage("The configuration file `vfs://root/nonvalid.php` has invalid content.");
 
         $content = <<<EOF
 not php content
@@ -95,7 +95,7 @@ EOF;
     public function testPhpFileIsEmpty()
     {
         $this->expectException(PropelInvalidArgumentException::class);
-        $this->expectExceptionMessage("The configuration file 'empty.php' has invalid content.");
+        $this->expectExceptionMessage("The configuration file `vfs://root/empty.php` has invalid content.");
 
         $this->newFile('empty.php');
 
@@ -110,7 +110,7 @@ EOF;
     public function testConfigFileNotReadableThrowsException()
     {
         $this->expectException(InputOutputException::class);
-        $this->expectExceptionMessage("You don't have permissions to access configuration file notreadable.php.");
+        $this->expectExceptionMessage("You don't have permissions to access configuration file `vfs://root/notreadable.php`.");
 
         $content = <<<EOF
 <?php

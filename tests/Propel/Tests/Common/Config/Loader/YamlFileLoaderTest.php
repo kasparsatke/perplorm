@@ -95,7 +95,7 @@ EOF;
     public function testYamlFileIsEmpty()
     {
         $this->expectException(InputOutputException::class);
-        $this->expectExceptionMessage("Unable to read configuration file `empty.yaml`.");
+        $this->expectExceptionMessage("Unable to read configuration file `vfs://root/empty.yaml`.");
 
         $this->newFile('empty.yaml', '');
 
@@ -112,7 +112,7 @@ EOF;
     public function testYamlFileNotReadableThrowsException()
     {
         $this->expectException(InputOutputException::class);
-        $this->expectExceptionMessage("You don't have permissions to access configuration file `notreadable.yaml`.");
+        $this->expectExceptionMessage("You don't have permissions to access configuration file `vfs://root/notreadable.yaml`.");
 
         $content = <<<EOF
 foo: bar
