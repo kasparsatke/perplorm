@@ -8,27 +8,29 @@
 
 namespace Propel\Tests\Generator\Command;
 
-use Propel\Generator\Command\MigrationDiffCommand;
+use Propel\Generator\Command\MigrationDownCommand;
 use Propel\Generator\Command\MigrationMigrateCommand;
+use Propel\Generator\Command\MigrationUpCommand;
 
 /**
  * @group database
  */
 class MigrationMigrateCommandTest extends MigrationTestCase
 {
+    public static function setUpBeforeClass(): void
+    {
+        parent::setUpBeforeClass();
+        $runner = new MigrationMigrateCommandTest('');
+        $runner->deleteMigrationFiles();
+    }
+
     /**
      * @return void
      */
     public function testPerformsUpMigration(): void
     {
-        $this->runCommandAndAssertSuccess('migration:diff', new MigrationDiffCommand(), ['--schema-dir' => self::BASE_SCHEMA_DIR]);
-
-        $outputString = $this->runCommandAndAssertSuccess(
-            'migration:migrate', 
-            new MigrationMigrateCommand(), 
-            [], 
-            self::MIGRATE_DOWN_AFTERWARDS
-        );
+        $this->runDiffAndAssertSuccess();
+        $outputString = $this->runMigrateAndAssertSuccess([], self::MIGRATE_DOWN_AFTERWARDS);
         $this->assertStringContainsString('Migration complete.', $outputString);
     }
 
@@ -37,9 +39,7 @@ class MigrationMigrateCommandTest extends MigrationTestCase
      */
     public function testMigrateToTheLastVersionIfTheGivenVersionIsNotExists(): void
     {
-        $outputString = $this->runCommandAndAssertSuccess(
-            'migration:migrate',
-            new MigrationMigrateCommand(),
+        $outputString = $this->runMigrateAndAssertSuccess(
             [self::COMMAND_OPTION_MIGRATE_TO_VERSION => 0],
             self::MIGRATE_DOWN_AFTERWARDS,
         );
@@ -54,12 +54,10 @@ class MigrationMigrateCommandTest extends MigrationTestCase
     {
         $this->setUpMigrateToVersion();
 
-        $migrationVersions = $this->getMigrationVersions();
+        $migrationVersions = $this->lookupExistingMigrationTimestamps();
         $expectedVersion = $migrationVersions[array_key_last($migrationVersions)];
 
-        $outputString = $this->runCommandAndAssertSuccess(
-            'migration:migrate',
-            new MigrationMigrateCommand(),
+        $outputString = $this->runMigrateAndAssertSuccess(
             [self::COMMAND_OPTION_MIGRATE_TO_VERSION => $expectedVersion],
         );
 
@@ -79,12 +77,10 @@ class MigrationMigrateCommandTest extends MigrationTestCase
     {
         $this->setUpMigrateToVersion();
 
-        $migrationVersions = $this->getMigrationVersions();
+        $migrationVersions = $this->lookupExistingMigrationTimestamps();
         $expectedVersion = $migrationVersions[array_key_first($migrationVersions)];
 
-        $outputString = $this->runCommandAndAssertSuccess(
-            'migration:migrate',
-            new MigrationMigrateCommand(),
+        $outputString = $this->runMigrateAndAssertSuccess(
             [self::COMMAND_OPTION_MIGRATE_TO_VERSION => $expectedVersion],
         );
 
@@ -104,14 +100,12 @@ class MigrationMigrateCommandTest extends MigrationTestCase
     {
         $this->setUpMigrateToVersion();
 
-        $migrationVersions = $this->getMigrationVersions();
+        $migrationVersions = $this->lookupExistingMigrationTimestamps();
         $this->migrateDown();
 
         $expectedVersion = $migrationVersions[array_key_last($migrationVersions)];
 
-        $outputString = $this->runCommandAndAssertSuccess(
-            'migration:migrate',
-            new MigrationMigrateCommand(),
+        $outputString = $this->runMigrateAndAssertSuccess(
             [self::COMMAND_OPTION_MIGRATE_TO_VERSION => $expectedVersion],
         );
 
@@ -119,5 +113,32 @@ class MigrationMigrateCommandTest extends MigrationTestCase
         $this->assertStringContainsString('Migration complete. No further migration to execute.', $outputString);
 
         $this->tearDownMigrateToVersion($migrationVersions);
+    }
+
+    /**
+     * @return void
+     */
+    public function testManualUpAndDown(): void
+    {
+        $this->runDiffAndAssertSuccess();
+        $outputString = $this->runCommandAndAssertSuccess('migration:up', new MigrationUpCommand());
+        $this->assertStringContainsString('Migration complete.', $outputString);
+    
+        $outputString = $this->runCommandAndAssertSuccess('migration:down', new MigrationDownCommand());
+        $this->assertStringContainsString('Reverse migration complete.', $outputString);
+    }
+
+    protected function runMigrateAndAssertSuccess(
+        array $additionalArguments = [],
+        bool $migrateDownAfterwards = false,
+        bool $expectNonZeroExitCode = false
+    ) {
+        return $this->runCommandAndAssertSuccess(
+            'migration:migrate', 
+            new MigrationMigrateCommand(), 
+            $additionalArguments, 
+            $migrateDownAfterwards,
+            $expectNonZeroExitCode
+        );
     }
 }

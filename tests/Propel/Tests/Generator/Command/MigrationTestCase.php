@@ -11,6 +11,7 @@ namespace Propel\Tests\Generator\Command;
 use Propel\Generator\Command\AbstractCommand;
 use Propel\Generator\Command\MigrationDiffCommand;
 use Propel\Generator\Command\MigrationDownCommand;
+use Propel\Generator\Command\MigrationMigrateCommand;
 use Propel\Generator\Command\MigrationUpCommand;
 use Propel\Runtime\Perpl;
 use Propel\Tests\TestCaseFixturesDatabase;
@@ -19,9 +20,8 @@ use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\StreamOutput;
 use function array_merge;
 
-class MigrationTestCase extends TestCaseFixturesDatabase
+abstract class MigrationTestCase extends TestCaseFixturesDatabase
 {
-
     /**
      * Directory with default connection (can be any, schema.xml files use a
      * schema prefix for tables, so initial connection does not matter)
@@ -41,7 +41,7 @@ class MigrationTestCase extends TestCaseFixturesDatabase
     /**
      * @var string
      */
-    private const OUTPUT_DIR = __DIR__ . '/../../../../migrationdiff';
+    protected const OUTPUT_DIR = __DIR__ . '/../../../../migrationdiff';
 
     /**
      * @var string
@@ -140,8 +140,8 @@ class MigrationTestCase extends TestCaseFixturesDatabase
         bool $expectNonZeroExitCode = false
     ) {
         return $this->runCommandAndAssertSuccess(
-            'migration:diff', 
-            new MigrationDiffCommand(), 
+            'migration:diff',
+            new MigrationDiffCommand(),
             array_merge(['--schema-dir' => self::BASE_SCHEMA_DIR], $additionalArguments),
             $migrateDownAfterwards,
             $expectNonZeroExitCode
@@ -270,10 +270,11 @@ class MigrationTestCase extends TestCaseFixturesDatabase
         /** @var array<string> $versionDirectories */
         $versionDirectories = glob(self::SCHEMA_DIR_MIGRATE_TO_VERSION_PATTERN, GLOB_ONLYDIR);
 
-        foreach ($versionDirectories as $versionDirectory) {
-            $this->runCommand('migration:diff', new MigrationDiffCommand(), ['--schema-dir' => $versionDirectory]);
+        foreach ($versionDirectories as $i => $versionDirectory) {
+            $timestamp = 1780000000 + $i;
+            file_put_contents(self::OUTPUT_DIR . "/PropelMigration_$timestamp.php", ''); // use override to ensure distinct timestamps
+            $this->runDiffAndAssertSuccess(['--schema-dir' => $versionDirectory, '--override' => true]);
             $this->migrateUp();
-            time_nanosleep(1, 0); // sleep one second to ensure distinct timestamps on migration files
         }
     }
 
@@ -294,9 +295,9 @@ class MigrationTestCase extends TestCaseFixturesDatabase
     /**
      * @return list<int>
      */
-    protected function getMigrationVersions(): array
+    protected function lookupExistingMigrationTimestamps(): array
     {
-        $migrationFiles = scandir(sprintf('%s%s', self::OUTPUT_DIR, DIRECTORY_SEPARATOR));
+        $migrationFiles = $this->lookupExistingMigrationFileNames();
 
         $migrationVersions = [];
         foreach ($migrationFiles as $migrationFile) {
@@ -306,5 +307,10 @@ class MigrationTestCase extends TestCaseFixturesDatabase
         }
 
         return $migrationVersions;
+    }
+
+    protected function lookupExistingMigrationFileNames(): array
+    {
+        return array_diff(scandir(static::OUTPUT_DIR) ?: [], array('..', '.'));
     }
 }

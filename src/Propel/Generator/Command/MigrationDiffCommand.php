@@ -22,7 +22,6 @@ use function file_put_contents;
 use function implode;
 use function reset;
 use function shell_exec;
-use function sprintf;
 use function time;
 use const DIRECTORY_SEPARATOR;
 
@@ -49,6 +48,8 @@ class MigrationDiffCommand extends AbstractMigrationCommand
             ->addOption('disable-identifier-quoting', null, InputOption::VALUE_NONE, 'Disable identifier quoting in SQL queries for reversed database tables.')
             ->addOption('comment', 'm', InputOption::VALUE_OPTIONAL, 'A comment for the migration', '')
             ->addOption('suffix', null, InputOption::VALUE_OPTIONAL, 'A suffix for the migration class', '')
+            ->addOption('override', 'o', InputOption::VALUE_OPTIONAL, 'Replace content of single pending migration file if available', false)
+
             ->setName('migration:diff')
             ->setAliases(['diff'])
             ->setDescription('Generate diff classes');
@@ -65,19 +66,111 @@ class MigrationDiffCommand extends AbstractMigrationCommand
         $this->setUp($input);
         $this->registerMigrationManagerSchemas();
         $manager = $this->getMigrationManager();
-        $generatorConfig = $this->getGeneratorConfig();
-
-        $isPrint = $input->getOption('print');
 
         $customConnectionData = $input->getOption('connection');
         $this->setUpMigrationManagerAccess($customConnectionData);
 
-        if ($manager->hasPendingMigrations() && !$isPrint) {
-            throw new RuntimeException(sprintf(
-                'Pending migrations have been found ; you should either execute or delete them before rerunning the \'diff\' task. %s',
-                "\n" . implode("\n", $manager->findUncommittedMigrationFileTimestamps()),
-            ));
+        $isPrint = $input->getOption('print');
+        $isVerbose = $input->getOption('verbose');
+        $isOverride = $input->getOption('override');
+
+        $openMigrationTimestamps = $manager->findUncommittedMigrationFileTimestamps();
+        $reuseTimestamp = null;
+        if ($openMigrationTimestamps && !$isPrint) {
+            if (!$isOverride) {
+                $timestampsList = implode("\n", $openMigrationTimestamps);
+                $msg = "Found pending migrations - execute or delete them before rerunning the 'diff' task, or run with the `--override` flag to replace existing migration code.\n$timestampsList";
+
+                throw new RuntimeException($msg);
+            }
+            if (count($openMigrationTimestamps) > 1) {
+                throw new RuntimeException('Override aborted: More than one pending migration.');
+            }
+            $reuseTimestamp = reset($openMigrationTimestamps);
+            $output->writeln("Overriding migration file with timestamp $reuseTimestamp");
         }
+
+        $currentSchema = $this->loadCurrentSchema($input, $output, $isVerbose);
+
+        $output->writeln('Comparing models...');
+
+        [$migrationsUp, $migrationsDown] = $this->generateMigrationCode($input, $output, $currentSchema, $isVerbose);
+
+        if (!$migrationsUp) {
+            $output->writeln('Same XML and database structures for all datasource - no diff to generate');
+
+            return static::CODE_SUCCESS;
+        }
+
+        if ($isPrint) {
+            $forceMultipleDbOutput = count($currentSchema->getDatabases()) > 1;
+            $output->writeln("\nSQL to migrate DB to schema.xml:" . $this->migrationsToString($migrationsUp, $forceMultipleDbOutput));
+
+            return static::CODE_SUCCESS;
+        }
+
+        $fileName = $this->writeFile($input, $migrationsUp, $migrationsDown, $reuseTimestamp);
+        $output->writeln("Created migration file `$fileName`");
+
+        $editorCmd = $input->getOption('editor');
+        if ($editorCmd) {
+            $output->writeln("Using ¸$editorCmd` as text editor");
+            shell_exec($editorCmd . ' ' . escapeshellarg($fileName));
+        } else {
+            $output->writeln('Please review the generated SQL statements, and add data migration code if necessary.');
+            $output->writeln('Once the migration class is valid, call the "migrate" task to execute it.');
+        }
+
+        return static::CODE_SUCCESS;
+    }
+
+    /**
+     * @param \Symfony\Component\Console\Input\InputInterface $input
+     * @param array $migrationsUp
+     * @param array $migrationsDown
+     * @param int|null $timestamp
+     *
+     * @return string
+     */
+    protected function writeFile(InputInterface $input, array $migrationsUp, array $migrationsDown, int|null $timestamp): string
+    {
+        $manager = $this->getMigrationManager();
+        $suffix = $input->getOption('suffix');
+        $comment = $input->getOption('comment');
+        $timestamp ??= time();
+        $migrationFileName = $manager->getMigrationFileName($timestamp, $suffix);
+        $migrationClassBody = $manager->getMigrationClassBody($migrationsUp, $migrationsDown, $timestamp, $comment, $suffix);
+
+        $fileName = $this->migrationDir . DIRECTORY_SEPARATOR . $migrationFileName;
+        file_put_contents($fileName, $migrationClassBody);
+
+        return $fileName;
+    }
+
+    /**
+     * @param array<string, string> $migrations
+     * @param bool $forceMultipleDbOutput
+     *
+     * @return string
+     */
+    protected function migrationsToString(array $migrations, bool $forceMultipleDbOutput): string
+    {
+        return count($migrations) === 1 && !$forceMultipleDbOutput
+            ? reset($migrations)
+            : implode("\n\n", array_map(fn ($dbName, $code) => " - Database $dbName:\n$code", array_keys($migrations), $migrations));
+    }
+
+    /**
+     * @param \Symfony\Component\Console\Input\InputInterface $input
+     * @param \Symfony\Component\Console\Output\OutputInterface $output
+     * @param bool $isVerbose
+     *
+     * @return \Propel\Generator\Model\Schema
+     */
+    protected function loadCurrentSchema(InputInterface $input, OutputInterface $output, bool $isVerbose): Schema
+    {
+        $manager = $this->getMigrationManager();
+        $generatorConfig = $this->getGeneratorConfig();
 
         $totalNbTables = 0;
         $reversedSchema = new Schema();
@@ -87,11 +180,11 @@ class MigrationDiffCommand extends AbstractMigrationCommand
             $name = $appDatabase->getName();
             $params = $connections[$name] ?? [];
             if (!$params) {
-                $output->writeln(sprintf('<info>No connection configured for database "%s"</info>', $name));
+                $output->writeln("<info>No connection configured for database `$name`</info>");
             }
 
-            if ($input->getOption('verbose')) {
-                $output->writeln(sprintf('Connecting to database "%s" using DSN "%s"', $name, $params['dsn']));
+            if ($isVerbose) {
+                $output->writeln("Connecting to database `$name` using DSN `{$params['dsn']}`");
             }
 
             $conn = $manager->getAdapterConnection($name);
@@ -100,7 +193,8 @@ class MigrationDiffCommand extends AbstractMigrationCommand
             $appDatabase->setPlatform($platform);
 
             if ($platform && !$platform->supportsMigrations()) {
-                $output->writeln(sprintf('Skipping database "%s" since vendor "%s" does not support migrations', $name, $platform->getDatabaseType()));
+                $vendor = $platform->getDatabaseType();
+                $output->writeln("Skipping database `$name` since vendor `$vendor` does not support migrations");
 
                 continue;
             }
@@ -127,19 +221,32 @@ class MigrationDiffCommand extends AbstractMigrationCommand
             $reversedSchema->addDatabase($database);
             $totalNbTables += $nbTables;
 
-            if ($input->getOption('verbose')) {
-                $output->writeln(sprintf('%d tables found in database "%s"', $nbTables, $name), OutputInterface::VERBOSITY_VERBOSE);
+            if ($isVerbose) {
+                $output->writeln("$nbTables tables found in database `$name`", OutputInterface::VERBOSITY_VERBOSE);
             }
         }
 
         if ($totalNbTables) {
-            $output->writeln(sprintf('%d tables found in all databases.', $totalNbTables));
+            $output->writeln("$totalNbTables tables found in all databases.");
         } else {
             $output->writeln('No table found in all databases');
         }
 
-        // comparing models
-        $output->writeln('Comparing models...');
+        return $reversedSchema;
+    }
+
+    /**
+     * @param \Symfony\Component\Console\Input\InputInterface $input
+     * @param \Symfony\Component\Console\Output\OutputInterface $output
+     * @param \Propel\Generator\Model\Schema $currentSchema
+     * @param bool $isVerbose
+     *
+     * @return array{array<string>, array<string>}
+     */
+    protected function generateMigrationCode(InputInterface $input, OutputInterface $output, Schema $currentSchema, bool $isVerbose): array
+    {
+        $manager = $this->getMigrationManager();
+        $generatorConfig = $this->getGeneratorConfig();
         $tableRenaming = $input->getOption('table-renaming');
 
         $migrationsUp = [];
@@ -149,24 +256,24 @@ class MigrationDiffCommand extends AbstractMigrationCommand
         $configManager = new ConfigurationManager($input->getOption('config-dir'));
         $excludedTables = array_merge((array)$excludedTables, (array)$configManager->getConfigProperty('exclude_tables'));
 
-        foreach ($reversedSchema->getDatabases() as $database) {
-            $name = $database->getName();
+        foreach ($currentSchema->getDatabases() as $currentDatabase) {
+            $name = $currentDatabase->getName();
 
-            if ($input->getOption('verbose')) {
+            if ($isVerbose) {
                 $output->writeln("Comparing database \"$name\"");
             }
 
-            $appDataDatabase = $manager->getDatabase($name);
-            if (!$appDataDatabase) {
+            $schemaDatabase = $manager->getDatabase($name);
+            if (!$schemaDatabase) {
                 $output->writeln("<error>Database \"$name\" does not exist in schema.xml. Skipped.</error>");
 
                 continue;
             }
 
-            $databaseDiff = DatabaseComparator::computeDiff($database, $appDataDatabase, false, $tableRenaming, $removeTable, $excludedTables);
+            $databaseDiff = DatabaseComparator::computeDiff($currentDatabase, $schemaDatabase, false, $tableRenaming, $removeTable, $excludedTables);
 
             if (!$databaseDiff) {
-                if ($input->getOption('verbose')) {
+                if ($isVerbose) {
                     $output->writeln("Same XML and database structures for datasource \"$name\" - no diff to generate");
                 }
 
@@ -189,50 +296,6 @@ class MigrationDiffCommand extends AbstractMigrationCommand
             $migrationsDown[$name] = $platform->getModifyDatabaseDDL($databaseDiff->getReverseDiff());
         }
 
-        if (!$migrationsUp) {
-            $output->writeln('Same XML and database structures for all datasource - no diff to generate');
-
-            return static::CODE_SUCCESS;
-        }
-
-        if ($isPrint) {
-            $forceMultipleDbOutput = count($reversedSchema->getDatabases()) > 1;
-            $output->writeln("\nSQL to migrate DB to schema.xml:" . $this->migrationsToString($migrationsUp, $forceMultipleDbOutput));
-
-            return static::CODE_SUCCESS;
-        }
-
-        $timestamp = time();
-        $migrationFileName = $manager->getMigrationFileName($timestamp, $input->getOption('suffix'));
-        $migrationClassBody = $manager->getMigrationClassBody($migrationsUp, $migrationsDown, $timestamp, $input->getOption('comment'), $input->getOption('suffix'));
-
-        $file = $this->migrationDir . DIRECTORY_SEPARATOR . $migrationFileName;
-        file_put_contents($file, $migrationClassBody);
-
-        $output->writeln(sprintf('"%s" file successfully created.', $file));
-
-        $editorCmd = $input->getOption('editor');
-        if ($editorCmd !== null) {
-            $output->writeln(sprintf('Using "%s" as text editor', $editorCmd));
-            shell_exec($editorCmd . ' ' . escapeshellarg($file));
-        } else {
-            $output->writeln('Please review the generated SQL statements, and add data migration code if necessary.');
-            $output->writeln('Once the migration class is valid, call the "migrate" task to execute it.');
-        }
-
-        return static::CODE_SUCCESS;
-    }
-
-    /**
-     * @param array<string, string> $migrations
-     * @param bool $forceMultipleDbOutput
-     *
-     * @return string
-     */
-    protected function migrationsToString(array $migrations, bool $forceMultipleDbOutput): string
-    {
-        return count($migrations) === 1 && !$forceMultipleDbOutput
-            ? reset($migrations)
-            : implode("\n\n", array_map(fn ($dbName, $code) => " - Database $dbName:\n$code", array_keys($migrations), $migrations));
+        return [$migrationsUp, $migrationsDown];
     }
 }

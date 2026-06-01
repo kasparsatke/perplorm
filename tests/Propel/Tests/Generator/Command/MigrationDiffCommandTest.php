@@ -48,7 +48,7 @@ class MigrationDiffCommandTest extends MigrationTestCase
     {
         $this->runDiffAndAssertSuccess();
         $errorMessgage = $this->runDiffAndAssertSuccess([], false, true);
-        $this->assertStringContainsString('Pending migrations have been found - you should either execute or delet', $errorMessgage); // NOTE: Respect console line limit 
+        $this->assertStringContainsString('Found pending migrations - execute or delete them', $errorMessgage); // NOTE: Respect console line limit 
     }
 
     public function testPrintAttribute(): void
@@ -56,7 +56,7 @@ class MigrationDiffCommandTest extends MigrationTestCase
         $output = $this->runDiffAndAssertSuccess(['--print' => true]);
 
         $this->assertStringContainsString('SQL to migrate DB to schema.xml:', $output);
-        $this->assertEmpty($this->getMigrationVersions(), 'should not have created migration files');
+        $this->assertEmpty($this->lookupExistingMigrationTimestamps(), 'should not have created migration files');
     }
 
     public static function PrintOutputDataProvider(): array
@@ -88,4 +88,31 @@ class MigrationDiffCommandTest extends MigrationTestCase
         $output = $this->runDiffAndAssertSuccess(['--print' => true]);
         $this->assertStringContainsString('SQL to migrate DB to schema.xml:', $output);
     }
+
+    /**
+     * @return void
+     */
+    public function testOverrideReplacesExistingMigration(): void
+    {
+        $fileName = static::OUTPUT_DIR . "/PropelMigration_1780312256.php";
+        file_put_contents($fileName, 'Mock Migration, content does not matter.');
+        $output = $this->runDiffAndAssertSuccess(['--override' => true]);
+
+        $this->assertStringContainsString('Overriding migration file with timestamp', $output);
+        $this->assertCount(1, $this->lookupExistingMigrationFileNames(), "should not have created more files");
+        $this->assertGeneratedFileContainsCreateTableStatement(true, 'PropelMigration_*.php');
+    }
+
+    /**
+     * @return void
+     */
+    public function testOverrideErrorOnMultipleMigration(): void
+    {
+        file_put_contents(static::OUTPUT_DIR . "/PropelMigration_1780312256.php", 'Mock Migration, content does not matter.');
+        file_put_contents(static::OUTPUT_DIR . "/PropelMigration_1780312257.php", 'Mock Migration, content does not matter.');
+
+        $output = $this->runDiffAndAssertSuccess(['--override' => true], false, true);
+        $this->assertStringContainsString('Override aborted: More than one pending migration.', $output);
+    }
+
 }
