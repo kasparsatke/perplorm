@@ -4,10 +4,12 @@ declare(strict_types = 1);
 
 namespace Propel\Common\Config;
 
+use DOMDocument;
 use Propel\Common\Config\Exception\InvalidArgumentException;
 use Propel\Common\Config\Exception\XmlParseException;
 use SimpleXMLElement;
 use function array_key_exists;
+use function array_key_first;
 use function count;
 use function ctype_digit;
 use function dom_import_simplexml;
@@ -15,13 +17,16 @@ use function file_exists;
 use function file_get_contents;
 use function is_array;
 use function is_numeric;
+use function is_string;
 use function libxml_clear_errors;
 use function libxml_get_errors;
 use function libxml_use_internal_errors;
+use function print_r;
 use function simplexml_load_file;
 use function simplexml_load_string;
 use function strlen;
 use function strtolower;
+use function var_export;
 
 /**
  * Class to convert an xml string to array
@@ -171,5 +176,59 @@ class XmlToArrayConverter
         }
 
         return $value;
+    }
+
+    /**
+     * @param array $array
+     *
+     * @throws \Propel\Common\Config\Exception\InvalidArgumentException
+     *
+     * @return string
+     */
+    public static function fromArray(array $array)
+    {
+        if (count($array) !== 1) {
+            throw new InvalidArgumentException('Array must have single root element.' . print_r($array, true));
+        }
+        $rootElement = array_key_first($array);
+        $content = $array[$rootElement];
+
+        $xmlElement = is_array($content)
+            ? static::arrayToXml($array[$rootElement], new SimpleXMLElement("<$rootElement/>"))
+            : new SimpleXMLElement("<$rootElement>" . (is_string($content) ? $content : var_export($content, true)) . "</$rootElement>");
+
+        $xml = $xmlElement->asXML();
+        if (!is_string($xml)) {
+            throw new InvalidArgumentException('Failed to create XML from array.');
+        }
+
+        // formatting
+        $dom = new DOMDocument('1.0');
+        $dom->preserveWhiteSpace = false;
+        $dom->formatOutput = true;
+        $dom->loadXML($xml);
+        /** @var string $arrayString */
+        $arrayString = $dom->saveXML();
+
+        return $arrayString;
+    }
+
+    /**
+     * @param array $array
+     * @param \SimpleXMLElement|null $parentXmlElement
+     *
+     * @return \SimpleXMLElement
+     */
+    protected static function arrayToXml(array $array, SimpleXMLElement|null $parentXmlElement = null)
+    {
+        $parentXmlElement ??= new SimpleXMLElement('<root/>');
+
+        foreach ($array as $key => $value) {
+            is_array($value)
+                ? static::arrayToXml($value, $parentXmlElement->addChild($key))
+                : $parentXmlElement->addChild($key, is_string($value) ? $value : var_export($value, true));
+        }
+
+        return $parentXmlElement;
     }
 }

@@ -114,7 +114,7 @@ abstract class FileLoader extends SymfonyFileLoader
     /**
      * @param string $fileName
      *
-     * @return int|bool
+     * @return bool
      */
     public static function isDistFile(string $fileName): bool
     {

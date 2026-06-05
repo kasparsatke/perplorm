@@ -16,13 +16,14 @@ class YamlParser extends AbstractParser
      *
      * @param array $array Source data to convert
      * @param string|null $rootKey
+     * @param $inline
      *
      * @return string Converted data, as a YAML string
      */
     #[\Override]
-    public function fromArray(array $array, ?string $rootKey = null): string
+    public function fromArray(array $array, ?string $rootKey = null, int $inline = 3): string
     {
-        return Yaml::dump($rootKey === null ? $array : [$rootKey => $array], 3);
+        return Yaml::dump($rootKey === null ? $array : [$rootKey => $array], $inline);
     }
 
     /**

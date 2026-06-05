@@ -266,7 +266,7 @@ class ConfigurationManager
     /**
      * @param string $configFilepath
      *
-     * @return array<array|string|null>
+     * @return array{0: non-falsy-string, 1?: null|string, 2: string}
      */
     private function buildExpectedConfigFileNamesForMainConfig(string $configFilepath): array
     {
@@ -331,8 +331,10 @@ class ConfigurationManager
     {
         $dirs = [
             $path,
+            $path . '/db',
             $path . '/conf',
             $path . '/config',
+            $path . '/perpl',
         ];
         $dirs = array_filter($dirs, 'is_dir');
 

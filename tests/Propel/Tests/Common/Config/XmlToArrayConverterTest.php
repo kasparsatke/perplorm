@@ -9,6 +9,7 @@
 namespace Propel\Tests\Common\Config;
 
 use org\bovigo\vfs\vfsStream;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Propel\Common\Config\Exception\InvalidArgumentException;
 use Propel\Common\Config\Exception\XmlParseException;
 use Propel\Common\Config\XmlToArrayConverter;
@@ -135,5 +136,46 @@ XML;
         $actual = XmlToArrayConverter::convert($file->url());
 
         $this->assertEquals([], $actual);
+    }
+
+    public static function ArrayToXmlDataProvider(): array
+    {
+        return [
+            [
+                ['rootName' => 'text content'],
+                '<rootName>text content</rootName>'
+            ], [
+                ['root' => ['node1' => 1, 'node2' => ['nested1' => 12.3, 'nested2' => 'value']]],
+                '<root>
+  <node1>1</node1>
+  <node2>
+    <nested1>12.3</nested1>
+    <nested2>value</nested2>
+  </node2>
+</root>'
+            ]
+        ];
+    }
+
+    #[DataProvider('ArrayToXmlDataProvider')]
+    public function testArrayToXml(array $array, string $expected): void
+    {
+        $actual = XmlToArrayConverter::fromArray($array);
+        $this->assertSame("<?xml version=\"1.0\"?>\n$expected\n", $actual);
+    }
+
+    public static function ArrayToXmlInvalidArrayDataProvider(): array
+    {
+        return [
+            [[]], 
+            [['node1' => 1, 'node2' => 2]]
+        ];
+    }
+
+    #[DataProvider('ArrayToXmlInvalidArrayDataProvider')]
+    public function testArrayToXmlInvalidInputException(array $array): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        XmlToArrayConverter::fromArray($array);
     }
 }

@@ -11,7 +11,6 @@ namespace Propel\Tests\Generator\Command;
 use Propel\Generator\Command\AbstractCommand;
 use Propel\Generator\Command\MigrationDiffCommand;
 use Propel\Generator\Command\MigrationDownCommand;
-use Propel\Generator\Command\MigrationMigrateCommand;
 use Propel\Generator\Command\MigrationUpCommand;
 use Propel\Runtime\Perpl;
 use Propel\Tests\TestCaseFixturesDatabase;

@@ -350,13 +350,14 @@ Hint:
      * @param array $args
      * @param \Symfony\Component\Console\Output\OutputInterface $output
      *
-     * @return void
+     * @return mixed
      */
     protected function runCommand(string $command, array $args, OutputInterface $output)
     {
         $in = new ArrayInput($args);
 
         $command = $this->getApplication()->find($command);
-        $command->run($in, $output);
+
+        return $command->run($in, $output);
     }
 }

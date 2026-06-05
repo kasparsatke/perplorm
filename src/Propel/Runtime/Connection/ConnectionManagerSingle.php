@@ -6,6 +6,7 @@ namespace Propel\Runtime\Connection;
 
 use InvalidArgumentException;
 use Propel\Runtime\Adapter\AdapterInterface;
+use Propel\Runtime\Exception\RuntimeException;
 
 /**
  * Manager for single connection to a datasource.
@@ -15,17 +16,14 @@ class ConnectionManagerSingle implements ConnectionManagerInterface
     /**
      * @var string The datasource name associated to this connection
      */
-    protected $name;
+    protected string $name;
 
     /**
-     * @var array
+     * @var array{dsn: string, user?: string|null, password: string|null, options?: mixed, settings?: mixed, classname?: class-string, attributes?: mixed}|null
      */
-    protected $configuration = [];
+    protected array|null $configuration = null;
 
-    /**
-     * @var \Propel\Runtime\Connection\ConnectionInterface|null
-     */
-    protected $connection;
+    protected ConnectionInterface|null $connection = null;
 
     /**
      * @param string $name The datasource name associated to this connection
@@ -56,10 +54,16 @@ class ConnectionManagerSingle implements ConnectionManagerInterface
     }
 
     /**
-     * @return array
+     * @throws \Propel\Runtime\Exception\RuntimeException
+     *
+     * @return array{dsn: string, user?: string|null, password: string|null, options?: mixed, settings?: mixed, classname?: class-string, attributes?: mixed}
      */
     public function getConfiguration(): array
     {
+        if (!$this->configuration) {
+            throw new RuntimeException('Requested connection configuration before it was set.');
+        }
+
         return $this->configuration;
     }
 
@@ -75,13 +79,13 @@ class ConnectionManagerSingle implements ConnectionManagerInterface
     }
 
     /**
-     * @param array|null $configuration
+     * @param array{dsn: string, user?: string|null, password: string|null, options?: mixed, settings?: mixed, classname?: class-string, attributes?: mixed}|null $configuration
      *
      * @return void
      */
     public function setConfiguration(?array $configuration): void
     {
-        $this->configuration = (array)$configuration;
+        $this->configuration = $configuration;
         $this->closeConnections();
     }
 
@@ -100,7 +104,7 @@ class ConnectionManagerSingle implements ConnectionManagerInterface
                 throw new InvalidArgumentException('$adapter not given');
             }
 
-            $this->connection = ConnectionFactory::create($this->configuration, $adapter);
+            $this->connection = ConnectionFactory::create($this->getConfiguration(), $adapter);
             $this->connection->setName($this->getName());
         }
 

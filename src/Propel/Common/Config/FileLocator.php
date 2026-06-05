@@ -25,6 +25,8 @@ class FileLocator extends BaseFileLocator
                 (string)getcwd(),
                 'config',
                 'conf',
+                'db',
+                'perpl',
             ];
         }
 

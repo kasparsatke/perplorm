@@ -61,9 +61,9 @@ Directory structure and files according to current config (directories marked as
 └── $rootDir/
      │  paths.schemaDir Schema XML files (input for migration:diff, database:reverse, etc) !from relative path!
      ├── generated-classes/
-     │       paths.phpDir Base target directory for model:build !from relative path!
+     │       paths.phpDir Base target directory for model:build, root of PHP namespace, typically '/src/' !from relative path!
      ├── generated-conf/
-     │       paths.phpConfDir Perpl configurations files (from config:convert and model:build). !from relative path!
+     │       paths.phpConfDir PHP includes to register database (from config:convert and model:build). !from relative path!
      └── generated-sql/
              paths.sqlDir SQL database initialization files for sql:insert (user-generated and generated from schema.xml by sql:build) !from relative path!
 ");
@@ -89,7 +89,7 @@ Directory structure and files according to current config (directories marked as
 
 └── $rootDir/
      ├── generated-classes/
-     │    │  paths.phpDir Base target directory for model:build !from relative path!
+     │    │  paths.phpDir Base target directory for model:build, root of PHP namespace, typically '/src/' !from relative path!
      │    ├── Baz/
      │    │    ├── Base/
      │    │    │    ├── Collection/
@@ -141,7 +141,7 @@ Directory structure and files according to current config (directories marked as
      │         ├─╼ NamespacedBookstoreManager.php (new)
      │         └─╼ NamespacedBookstoreManagerQuery.php (new)
      ├── generated-conf/
-     │    │  paths.phpConfDir Perpl configurations files (from config:convert and model:build). !from relative path!
+     │    │  paths.phpConfDir PHP includes to register database (from config:convert and model:build). !from relative path!
      │    └─╼ loadDatabase.php (new)
      ├── generated-migrations/
      │       paths.migrationDir Migration files (target for migration:create, migration:migrate, etc) !from relative path!

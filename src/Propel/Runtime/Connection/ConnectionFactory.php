@@ -32,7 +32,7 @@ class ConnectionFactory
     /**
      * Open a database connection based on a configuration.
      *
-     * @param array $configuration
+     * @param array{dsn: string, user?: string|null, password: string|null, options?: array|mixed, settings?: array|mixed, classname?: class-string, attributes?: mixed} $configuration
      * @param \Propel\Runtime\Adapter\AdapterInterface $adapter
      * @param string $defaultConnectionClass
      *
@@ -46,13 +46,12 @@ class ConnectionFactory
         AdapterInterface $adapter,
         string $defaultConnectionClass = self::DEFAULT_CONNECTION_CLASS
     ): ConnectionInterface {
-        if (static::$useProfilerConnection) {
-            $connectionClass = ProfilerConnectionWrapper::class;
-        } elseif (isset($configuration['classname'])) {
-            $connectionClass = $configuration['classname'];
-        } else {
-            $connectionClass = $defaultConnectionClass;
-        }
+        $connectionClass = match (true) {
+            static::$useProfilerConnection => ProfilerConnectionWrapper::class,
+            isset($configuration['classname']) => $configuration['classname'],
+            default => $defaultConnectionClass,
+        };
+
         try {
             $adapterConnection = $adapter->getConnection($configuration);
         } catch (AdapterException $e) {
