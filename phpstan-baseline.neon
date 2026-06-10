@@ -275,6 +275,12 @@ parameters:
 			path: src/Propel/Runtime/Collection/Collection.php
 
 		-
+			message: '#^Parameter \#1 \$configuration of static method Propel\\Runtime\\Connection\\ConnectionFactory\:\:create\(\) expects array\{dsn\: string, user\?\: string\|null, password\: string\|null, options\?\: mixed, settings\?\: mixed, classname\?\: class\-string, attributes\?\: mixed\}, array given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Propel/Runtime/Connection/ConnectionManagerPrimaryReplica.php
+
+		-
 			message: '#^Call to an undefined method Propel\\Runtime\\Connection\\ConnectionWrapper\:\:getProfiler\(\)\.$#'
 			identifier: method.notFound
 			count: 3

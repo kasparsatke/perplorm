@@ -79,7 +79,7 @@ class MigrationDiffCommand extends AbstractMigrationCommand
         if ($openMigrationTimestamps && !$isPrint) {
             if (!$isOverride) {
                 $timestampsList = implode("\n", $openMigrationTimestamps);
-                $msg = "Found pending migrations - execute or delete them before rerunning the 'diff' task, or run with the `--override` flag to replace existing migration code.\n$timestampsList";
+                $msg = "Found pending migrations - execute or delete them, or run with the `--override` flag to replace existing migration file code.\n$timestampsList";
 
                 throw new RuntimeException($msg);
             }

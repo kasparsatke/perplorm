@@ -10,7 +10,12 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ChoiceQuestion;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Console\Question\Question;
+use function array_keys;
+use function array_reduce;
+use function max;
 use function sprintf;
+use function str_pad;
+use function strlen;
 
 class ConsoleHelper extends QuestionHelper
 {
@@ -100,8 +105,10 @@ class ConsoleHelper extends QuestionHelper
     public function writeSummary(array $items): void
     {
         $this->output->writeln('');
+        $keyMaxLen = array_reduce(array_keys($items), fn ($max, $key) => max($max, strlen($key)), 0);
         foreach ($items as $name => $value) {
-            $this->output->writeln(sprintf('<info>%s</info>: <comment>%s</comment>', $name, $value));
+            $paddedName = str_pad($name . ':', $keyMaxLen);
+            $this->output->writeln("<info>$paddedName</info> <comment>$value</comment>");
         }
     }
 

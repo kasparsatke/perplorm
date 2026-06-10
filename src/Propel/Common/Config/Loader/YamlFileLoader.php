@@ -34,11 +34,7 @@ class YamlFileLoader extends FileLoader
             throw new InputOutputException(sprintf('Unable to read configuration file `%s`.', $path));
         }
 
-        $content = Yaml::parse($data);
-
-        if ($content === null) {
-            $content = [];
-        }
+        $content = Yaml::parse($data) ?? [];
 
         if (!is_array($content)) {
             throw new ParseException('Unable to parse the configuration file: wrong yaml content.');

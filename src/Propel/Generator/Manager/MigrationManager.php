@@ -108,7 +108,7 @@ class MigrationManager extends AbstractManager
      *
      * @throws \Propel\Generator\Exception\InvalidArgumentException
      *
-     * @return array
+     * @return array{adapter: string, dsn: string, user?: string|null, password: string|null, options?: array|mixed, settings?: array|mixed, classname?: class-string, attributes?: mixed}
      */
     public function getConnection(string $datasource): array
     {
@@ -128,7 +128,8 @@ class MigrationManager extends AbstractManager
     {
         if (!isset($this->adapterConnections[$datasource])) {
             $buildConnection = $this->getConnection($datasource);
-            $conn = ConnectionFactory::create($buildConnection, AdapterFactory::create($buildConnection['adapter']));
+            $adapter = AdapterFactory::create($buildConnection['adapter']);
+            $conn = ConnectionFactory::create($buildConnection, $adapter);
             $this->adapterConnections[$datasource] = $conn;
         }
 

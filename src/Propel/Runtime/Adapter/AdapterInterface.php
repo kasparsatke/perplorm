@@ -32,7 +32,7 @@ interface AdapterInterface
     /**
      * Build database connection
      *
-     * @param array $params connection parameters
+     * @param array{dsn: string, user?: string|null, password: string|null, options?: array|mixed, settings?: array|mixed} $params connection parameters
      *
      * @return \Propel\Runtime\Connection\ConnectionInterface
      */

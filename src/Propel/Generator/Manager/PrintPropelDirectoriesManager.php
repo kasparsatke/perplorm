@@ -170,8 +170,8 @@ class PrintPropelDirectoriesManager extends AbstractManager
             'paths.migrationDir' => 'Migration files (target for migration:create, migration:migrate, etc)',
             'paths.schemaDir' => 'Schema XML files (input for migration:diff, database:reverse, etc)',
             'paths.sqlDir' => 'SQL database initialization files for sql:insert (user-generated and generated from schema.xml by sql:build)',
-            'paths.phpConfDir' => 'Perpl configurations files (from config:convert and model:build).',
-            'paths.phpDir' => 'Base target directory for model:build',
+            'paths.phpConfDir' => 'PHP includes to register database (from config:convert and model:build).',
+            'paths.phpDir' => 'Base target directory for model:build, root of PHP namespace, typically \'/src/\'',
         ];
 
         foreach ($pathDescription as $configKey => $description) {
