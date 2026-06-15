@@ -34,6 +34,7 @@ use Propel\Runtime\Connection\ConnectionInterface;
 use Propel\Runtime\DataFetcher\DataFetcherInterface;
 use Propel\Runtime\Exception\LogicException;
 use Propel\Runtime\Exception\PropelException;
+use Propel\Runtime\Exception\RuntimeException;
 use Propel\Runtime\Map\DatabaseMap;
 use Propel\Runtime\Map\TableMap;
 use Propel\Runtime\Perpl;
@@ -477,16 +478,19 @@ class Criteria
      * myCrit->addAsColumn('alias', 'ALIAS('.MyTableMap::ID.')');
      * </code>
      *
-     * If the name already exists, it is replaced by the new clause.
-     *
-     * @param string $name Column name in output (AS alias).
+     * @param string $columnAlias Column name in output (AS alias).
      * @param string $clause SQL clause to select from the table
+     *
+     * @throws \Propel\Runtime\Exception\RuntimeException
      *
      * @return $this A modified Criteria object.
      */
-    public function addAsColumn(string $name, string $clause)
+    public function addAsColumn(string $columnAlias, string $clause)
     {
-        $this->asColumns[$name] = $clause;
+        if (isset($this->asColumns[$columnAlias]) && $this->asColumns[$columnAlias] !== $clause) {
+            throw new RuntimeException("Column alias '$columnAlias' already registered, cannot add twice.");
+        }
+        $this->asColumns[$columnAlias] = $clause;
 
         return $this;
     }
