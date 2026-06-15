@@ -100,7 +100,7 @@ class SubQueryTest extends BookstoreTestBase
     public function testSubQueryWithoutAlias()
     {
         $subCriteria = new BookQuery();
-        $subCriteria->addSelfSelectColumns();
+        $subCriteria->addModelColumns();
 
         $c = new BookQuery();
         $c->addSubquery($subCriteria); // no alias
@@ -260,7 +260,7 @@ class SubQueryTest extends BookstoreTestBase
     {
         // sort the books (on date, if equal continue with id), filtered by a publisher
         $sortedBookQuery = new BookQuery();
-        $sortedBookQuery->addSelfSelectColumns();
+        $sortedBookQuery->addModelColumns();
         $sortedBookQuery->filterByPublisherId(123);
         $sortedBookQuery->orderByTitle(Criteria::DESC);
         $sortedBookQuery->orderById(Criteria::DESC);
@@ -309,7 +309,7 @@ class SubQueryTest extends BookstoreTestBase
         $c->addSubquery($subCriteria, 'alias1', false);
         $c->select(['alias1.Id']);
         $c->setAutoAddTable(false);
-        $c->configureSelectColumns();
+        $c->setupUserSelectedColumns();
 
         $sql = $this->getSql('SELECT alias1.id AS "alias1.Id" FROM (SELECT book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id FROM book) AS alias1');
 

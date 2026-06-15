@@ -10,6 +10,7 @@ use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnResolver;
 use Propel\Runtime\ActiveQuery\Exception\UnknownModelException;
 use Propel\Runtime\Exception\InvalidArgumentException;
 use Propel\Runtime\Exception\LogicException;
+use Propel\Runtime\Exception\PropelException;
 use Propel\Runtime\Formatter\AbstractFormatter;
 use Propel\Runtime\Map\TableMap;
 use Propel\Runtime\Perpl;
@@ -44,6 +45,20 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
     protected string|null $modelAlias = null;
 
     protected TableMap|null $tableMap = null;
+
+    /**
+     * User-selected columns.
+     *
+     * Set in {@see static::select()}. Will be added as AS columns in {@see static::setupUserSelectedColumns()}
+     *
+     * @var array<string>|null
+     */
+    protected array|null $userSelectedColumns = null;
+
+    /**
+     * Used to memorize whether we added self-select columns before.
+     */
+    protected bool $isSelfSelected = false;
 
     /**
      * @var \Propel\Runtime\Formatter\AbstractFormatter<array|\Propel\Runtime\ActiveRecord\ActiveRecordInterface, \Propel\Runtime\Collection\Collection<array|\Propel\Runtime\ActiveRecord\ActiveRecordInterface>>|null
@@ -472,5 +487,113 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
         if ($this->formatter !== null) {
             $this->formatter = clone $this->formatter;
         }
+    }
+
+    /**
+     * @return bool
+     */
+    #[\Override]
+    protected function isEmpty(): bool
+    {
+        return parent::isEmpty() && !($this->formatter || $this->modelAlias || $this->relatedModelsToPopulate || $this->userSelectedColumns);
+    }
+
+    /**
+     * Clear the conditions to allow the reuse of the query object.
+     * The ModelCriteria's Model and alias 'all the properties set by construct) will remain.
+     *
+     * @return $this
+     */
+    #[\Override]
+    public function clear()
+    {
+        $this->relatedModelsToPopulate = [];
+        $this->formatter = null;
+        $this->userSelectedColumns = null;
+        $this->isSelfSelected = false;
+
+        return parent::clear();
+    }
+
+    /**
+     * Whether this Criteria has any select columns.
+     *
+     * This will include columns added with addAsColumn() method.
+     *
+     * @see static::addAsColumn()
+     * @see static::addSelectColumn()
+     *
+     * @return bool
+     */
+    public function hasSelectClause(): bool
+    {
+        return (bool)$this->userSelectedColumns || parent::hasSelectClause();
+    }
+
+    /**
+     * Makes the ModelCriteria return a string, array, or ArrayCollection
+     * Examples:
+     *   ArticleQuery::create()->select('Name')->find();
+     *   => ArrayCollection Object ('Foo', 'Bar')
+     *
+     *   ArticleQuery::create()->select('Name')->findOne();
+     *   => string 'Foo'
+     *
+     *   ArticleQuery::create()->select(array('Id', 'Name'))->find();
+     *   => ArrayCollection Object (
+     *        array('Id' => 1, 'Name' => 'Foo'),
+     *        array('Id' => 2, 'Name' => 'Bar')
+     *      )
+     *
+     *   ArticleQuery::create()->select(array('Id', 'Name'))->findOne();
+     *   => array('Id' => 1, 'Name' => 'Foo')
+     *
+     * @param mixed $columnArray A list of column names (e.g. array('Title', 'Category.Name', 'c.Content')) or a single column name (e.g. 'Name')
+     *
+     * @throws \Propel\Runtime\Exception\PropelException
+     *
+     * @return $this
+     */
+    public function select($columnArray)
+    {
+        if (!$columnArray) {
+            throw new PropelException('You must ask for at least one column');
+        }
+
+        if ($columnArray === '*') {
+            $columnArray = $this->resolveSelectAll();
+        }
+        if (!is_array($columnArray)) {
+            $columnArray = [$columnArray];
+        }
+        $this->userSelectedColumns = $columnArray;
+        $this->isSelfSelected = true;
+
+        return $this;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function resolveSelectAll(): array
+    {
+        $columnArray = [];
+        foreach ($this->getTableMapOrFail()->getColumns() as $columnMap) {
+            $columnArray[] = $this->modelName . '.' . $columnMap->getPhpName();
+        }
+
+        return $columnArray;
+    }
+
+    /**
+     * Retrieves the columns defined by a previous call to select().
+     *
+     * @see select()
+     *
+     * @return array<string>|null A list of column names (e.g. array('Title', 'Category.Name', 'c.Content')) or a single column name (e.g. 'Name')
+     */
+    public function getSelect()
+    {
+        return $this->userSelectedColumns;
     }
 }

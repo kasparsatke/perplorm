@@ -116,20 +116,6 @@ class ModelCriteria extends BaseModelCriteria
     protected bool $isKeepQuery = true;
 
     /**
-     * User-selected columns.
-     *
-     * Set in {@see static::select()}. Will be added as AS columns in {@see static::setupUserSelectedColumns()}
-     *
-     * @var array<string>|null
-     */
-    protected array|null $select = null;
-
-    /**
-     * Used to memorize whether we added self-select columns before.
-     */
-    protected bool $isSelfSelected = false;
-
-    /**
      * Indicates that this query is wrapped in an InnerQueryCriterion.
      *
      * Marks the query to be
@@ -396,89 +382,6 @@ class ModelCriteria extends BaseModelCriteria
         }
 
         return $this;
-    }
-
-    /**
-     * Makes the ModelCriteria return a string, array, or ArrayCollection
-     * Examples:
-     *   ArticleQuery::create()->select('Name')->find();
-     *   => ArrayCollection Object ('Foo', 'Bar')
-     *
-     *   ArticleQuery::create()->select('Name')->findOne();
-     *   => string 'Foo'
-     *
-     *   ArticleQuery::create()->select(array('Id', 'Name'))->find();
-     *   => ArrayCollection Object (
-     *        array('Id' => 1, 'Name' => 'Foo'),
-     *        array('Id' => 2, 'Name' => 'Bar')
-     *      )
-     *
-     *   ArticleQuery::create()->select(array('Id', 'Name'))->findOne();
-     *   => array('Id' => 1, 'Name' => 'Foo')
-     *
-     * @param mixed $columnArray A list of column names (e.g. array('Title', 'Category.Name', 'c.Content')) or a single column name (e.g. 'Name')
-     *
-     * @throws \Propel\Runtime\Exception\PropelException
-     *
-     * @return $this
-     */
-    public function select($columnArray)
-    {
-        if (!$columnArray) {
-            throw new PropelException('You must ask for at least one column');
-        }
-
-        if ($columnArray === '*') {
-            $columnArray = $this->resolveSelectAll();
-        }
-        if (!is_array($columnArray)) {
-            $columnArray = [$columnArray];
-        }
-        $this->select = $columnArray;
-        $this->isSelfSelected = true;
-
-        return $this;
-    }
-
-    /**
-     * @return list<string>
-     */
-    protected function resolveSelectAll(): array
-    {
-        $columnArray = [];
-        foreach ($this->getTableMapOrFail()->getColumns() as $columnMap) {
-            $columnArray[] = $this->modelName . '.' . $columnMap->getPhpName();
-        }
-
-        return $columnArray;
-    }
-
-    /**
-     * Retrieves the columns defined by a previous call to select().
-     *
-     * @see select()
-     *
-     * @return array<string>|null A list of column names (e.g. array('Title', 'Category.Name', 'c.Content')) or a single column name (e.g. 'Name')
-     */
-    public function getSelect()
-    {
-        return $this->select;
-    }
-
-    /**
-     * Whether this Criteria has any select columns.
-     *
-     * This will include columns added with addAsColumn() method.
-     *
-     * @see addAsColumn()
-     * @see addSelectColumn()
-     *
-     * @return bool
-     */
-    #[\Override]
-    public function hasSelectClause(): bool
-    {
-        return (bool)$this->select || parent::hasSelectClause();
     }
 
     /**
@@ -775,7 +678,7 @@ class ModelCriteria extends BaseModelCriteria
 
         // check that the columns of the main class are already added (but only if this isn't a useQuery)
         if (!$this->hasSelectClause() && !$this->getPrimaryCriteria()) {
-            $this->addSelfSelectColumns();
+            $this->addModelColumns();
         }
         // add the columns of the related class
         $this->addRelationSelectColumns($relationName);
@@ -817,7 +720,7 @@ class ModelCriteria extends BaseModelCriteria
         $clause = $this->normalizeFilterExpression($clause)->getNormalizedFilterExpression();
         // check that the columns of the main class are already added (if this is the primary ModelCriteria)
         if (!$this->hasSelectClause() && !$this->getPrimaryCriteria()) {
-            $this->addSelfSelectColumns();
+            $this->addModelColumns();
         }
 
         return $this->addAsColumn($name, $clause);
@@ -1021,7 +924,7 @@ class ModelCriteria extends BaseModelCriteria
             && $criteria->relatedModelsToPopulate
         ) {
             if (!$this->isSelfColumnsSelected()) {
-                $this->addSelfSelectColumns();
+                $this->addModelColumns();
             }
             $criteria->removeSelfSelectColumns();
         }
@@ -1045,9 +948,6 @@ class ModelCriteria extends BaseModelCriteria
     public function clear()
     {
         $this->primaryCriteria = null;
-        $this->formatter = null;
-        $this->select = null;
-        $this->isSelfSelected = false;
 
         return parent::clear();
     }
@@ -1115,10 +1015,11 @@ class ModelCriteria extends BaseModelCriteria
 
         if ($subQuery->modelTableMapName === $this->modelTableMapName) {
             $this->setModelAlias($alias, true);
-            $this->addSelfSelectColumns(true);
+            $this->addModelColumns(true);
         } else {
             $tableMapClassName = $subQuery->modelTableMapName;
-            $this->addSelfSelectColumnsFromTableMapClass($tableMapClassName, $alias);
+            assert($tableMapClassName !== null);
+            $this->selectAllColumnsFromTableMapClass($tableMapClassName, $alias);
         }
 
         return $this;
@@ -1145,7 +1046,7 @@ class ModelCriteria extends BaseModelCriteria
      *
      * @return $this
      */
-    public function addSelfSelectColumns(bool $force = false)
+    public function addModelColumns(bool $force = false)
     {
         if ($this->isSelfSelected && !$force) {
             return $this;
@@ -1156,25 +1057,50 @@ class ModelCriteria extends BaseModelCriteria
 
         $alias = ($this->useAliasInSQL) ? $this->modelAlias : null;
 
-        $this->addSelfSelectColumnsFromTableMapClass($tableMapClassName, $alias);
+        $this->selectAllColumnsFromTableMapClass($tableMapClassName, $alias);
 
         return $this;
     }
 
     /**
+     * @deprecated Use {@see static::addModelColumns()} (not available on public interface)
+     *
+     * @param bool $force
+     *
+     * @return $this
+     */
+    public function addSelfSelectColumns(bool $force = false)
+    {
+        return $this->addModelColumns($force);
+    }
+
+    /**
      * Adds the select columns for the given table.
      *
-     * @param string $tableMapClassName
+     * @param class-string<\Propel\Runtime\Map\TableMap> $tableMapClassName
+     * @param string|null $alias
+     *
+     * @return $this
+     */
+    public function selectAllColumnsFromTableMapClass(string $tableMapClassName, ?string $alias = null)
+    {
+        $tableMapClassName::addSelectColumns($this, $alias);
+        $this->isSelfSelected = true;
+
+        return $this;
+    }
+
+    /**
+     * @deprecated Use aptly named {@see static::selectAllColumnsFromTableMapClass()}
+     *
+     * @param class-string<\Propel\Runtime\Map\TableMap> $tableMapClassName
      * @param string|null $alias
      *
      * @return $this
      */
     public function addSelfSelectColumnsFromTableMapClass(string $tableMapClassName, ?string $alias = null)
     {
-        $tableMapClassName::addSelectColumns($this, $alias);
-        $this->isSelfSelected = true;
-
-        return $this;
+        return $this->selectAllColumnsFromTableMapClass($tableMapClassName, $alias);
     }
 
     /**
@@ -1211,17 +1137,15 @@ class ModelCriteria extends BaseModelCriteria
     /**
      * Adds the select columns for a relation
      *
-     * @param string $relation The relation name or alias, as defined in join()
+     * @param string $relationName The relation name or alias, as defined in join()
      *
      * @return $this
      */
-    public function addRelationSelectColumns(string $relation)
+    public function addRelationSelectColumns(string $relationName)
     {
-        /** @var \Propel\Runtime\ActiveQuery\ModelJoin $join */
-        $join = $this->joins[$relation];
-        if ($join->getTableMap()) {
-            $join->getTableMap()->addSelectColumns($this, $join->getRelationAlias());
-        }
+        $join = $this->joins[$relationName];
+        assert($join instanceof ModelJoin);
+        $join->getTableMap()?->addSelectColumns($this, $join->getRelationAlias());
 
         return $this;
     }
@@ -1348,10 +1272,7 @@ class ModelCriteria extends BaseModelCriteria
      */
     public function fetch(?ConnectionInterface $con = null): DataFetcherInterface
     {
-        if ($con === null) {
-            $con = Perpl::getServiceContainer()->getReadConnection($this->getDbName());
-        }
-
+        $con ??= Perpl::getServiceContainer()->getReadConnection($this->getDbName());
         $this->basePreSelect($con);
 
         return $this->doSelect($con);
@@ -1714,11 +1635,11 @@ class ModelCriteria extends BaseModelCriteria
     #[\Override]
     public function doCount(?ConnectionInterface $con = null): DataFetcherInterface
     {
-        $this->configureSelectColumns();
+        $this->setupUserSelectedColumns();
 
         // check that the columns of the main class are already added (if this is the primary ModelCriteria)
         if (!$this->hasSelectClause() && !$this->getPrimaryCriteria()) {
-            $this->addSelfSelectColumns();
+            $this->addModelColumns();
         }
 
         return parent::doCount($con);
@@ -2085,8 +2006,8 @@ class ModelCriteria extends BaseModelCriteria
     #[\Override]
     public function doSelect(?ConnectionInterface $con = null): DataFetcherInterface
     {
-        $this->configureSelectColumns();
-        $this->addSelfSelectColumns();
+        $this->setupUserSelectedColumns();
+        $this->addModelColumns();
 
         return parent::doSelect($con);
     }
@@ -2103,7 +2024,7 @@ class ModelCriteria extends BaseModelCriteria
     #[\Override]
     public function createSelectSql(array &$params): string
     {
-        $this->configureSelectColumns();
+        $this->setupUserSelectedColumns();
 
         return parent::createSelectSql($params);
     }
@@ -2113,9 +2034,9 @@ class ModelCriteria extends BaseModelCriteria
      *
      * @return void
      */
-    public function configureSelectColumns(): void
+    public function setupUserSelectedColumns(): void
     {
-        if (!$this->select) {
+        if (!$this->userSelectedColumns) {
             return;
         }
 
@@ -2124,7 +2045,7 @@ class ModelCriteria extends BaseModelCriteria
         }
         $this->selectColumns = [];
 
-        foreach ($this->select as $columnName) {
+        foreach ($this->userSelectedColumns as $columnName) {
             if (array_key_exists($columnName, $this->asColumns)) {
                 continue;
             }
@@ -2136,6 +2057,16 @@ class ModelCriteria extends BaseModelCriteria
             // always put quotes around the columnName to be safe, we strip them in the formatter
             $this->addAsColumn('"' . $columnName . '"', $localColumnName);
         }
+    }
+
+    /**
+     * @deprecated Use aptly named {@see static::setupUserSelectedColumns()}
+     *
+     * @return void
+     */
+    public function configureSelectColumns(): void
+    {
+        $this->setupUserSelectedColumns();
     }
 
     /**
@@ -2272,14 +2203,5 @@ class ModelCriteria extends BaseModelCriteria
         $this->isSelfSelected = true;
 
         return parent::addSelectColumn($name);
-    }
-
-    /**
-     * @return bool
-     */
-    #[\Override]
-    protected function isEmpty(): bool
-    {
-        return parent::isEmpty() && !($this->formatter || $this->modelAlias || $this->relatedModelsToPopulate || $this->select);
     }
 }

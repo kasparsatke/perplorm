@@ -197,7 +197,7 @@ class ColumnReplacementInSubqueryTest extends TestCaseFixtures
 
         $this->expectException(\Exception::class);
         $params = [];
-        $authorQuery->configureSelectColumns();
+        $authorQuery->setupUserSelectedColumns();
         $query = $authorQuery->createSelectSql($params);
     }
 

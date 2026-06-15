@@ -529,6 +529,6 @@ class ModelCriteriaSelectTest extends BookstoreTestBase
         $this->expectException(PropelException::class);
         $c = new ModelCriteria('bookstore', 'Propel\Tests\Bookstore\Book');
         $c->select(['Id', 'LeUnknownColumn']);
-        $c->configureSelectColumns();
+        $c->setupUserSelectedColumns();
     }
 }
