@@ -1700,8 +1700,7 @@ $indent};";
     protected function addHashCode(string &$script): void
     {
         $this->declareClass('\RuntimeException');
-        $this->declareGlobalFunction('crc32', 'json_encode', 'spl_object_hash');
-        $this->declareGlobalConstant('JSON_UNESCAPED_UNICODE');
+        $this->declareGlobalFunction('spl_object_hash');
         $primaryKeyFKNames = [];
         $foreignKeyPKCount = 0;
         foreach ($this->getTable()->getForeignKeys() as $foreignKey) {
@@ -1730,6 +1729,8 @@ $indent};";
     {";
         // use PK if available
         if ($this->getTable()->hasPrimaryKey()) {
+            $this->declareGlobalFunction('crc32', 'json_encode');
+            $this->declareGlobalConstant('JSON_UNESCAPED_UNICODE');
             $primaryKeys = $this->getTable()->getPrimaryKey();
             $checks = array_map(fn ($pk) => "\$this->get{$pk->getPhpName()}() !== null", $primaryKeys);
             $offset = '                     ';
@@ -1748,6 +1749,8 @@ $indent};";
 
         // use foreign object hashes if available
         if ($foreignKeyPKCount > 0) {
+            $this->declareGlobalFunction('crc32', 'json_encode');
+            $this->declareGlobalConstant('JSON_UNESCAPED_UNICODE');
             $fkNamesString = "['" . implode("', '", $primaryKeyFKNames) . "']";
             $script .= "
         \$fkFieldNames = $fkNamesString;
