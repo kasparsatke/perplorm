@@ -45,8 +45,6 @@ class ColumnCodeTest extends CompareGeneratedCodeTestCase
             [['<column name="lazy_loaded_blob_column" type="BLOB" lazyLoad="true"/>', null, null], __DIR__ . '/expected_column_code/lazy_lob_model_reference.txt'],
             [['<column name="unit_enum_column" type="VARCHAR" size="42" defaultValue="Red" phpType="'. ColorsUnitEnum::class .'"/>', null, null], __DIR__ . '/expected_column_code/unit_enum_model_reference.txt'],
             [['<column name="backed_enum_column" type="VARCHAR" size="42" defaultValue="red" phpType="'. ColorsBackedEnum::class .'"/>', null, null], __DIR__ . '/expected_column_code/backed_enum_model_reference.txt'],
-            [['<column name="backed_enum_from_int_column" type="ENUM" defaultValue="blue" phpType="'. ColorsBackedEnum::class .'"/>', null, null], __DIR__ . '/expected_column_code/enum_column_with_php_backed_enum_model_reference.txt'],
-            [['<column name="unit_enum_from_int_column" type="ENUM" defaultValue="Blue" phpType="'. ColorsUnitEnum::class .'"/>', null, null], __DIR__ . '/expected_column_code/enum_column_with_php_unit_enum_model_reference.txt'],
         ];
     }
 

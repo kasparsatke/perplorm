@@ -9,6 +9,7 @@ use LogicException;
 use Propel\Common\Util\SetColumnConverter;
 use Propel\Generator\Exception\EngineException;
 use Propel\Generator\Exception\LogicException as ExceptionLogicException;
+use Propel\Generator\Exception\SchemaException;
 use Propel\Generator\Platform\PlatformInterface;
 use function addcslashes;
 use function count;
@@ -292,6 +293,7 @@ class Column extends MappingModel
 
     /**
      * @throws \Propel\Generator\Exception\EngineException
+     * @throws \Propel\Generator\Exception\SchemaException
      *
      * @return void
      */
@@ -406,6 +408,10 @@ class Column extends MappingModel
                 $this->getAttribute('name'),
                 $e->getMessage(),
             ));
+        }
+
+        if ($this->isPhpEnumType() && ($this->isBinaryEnumType() || $this->isBinarySetType())) {
+            throw new SchemaException("Column `{$this->getTableName()}.{$this->getName()}`: Combining binary ENUM/SET type with a PHP enum type (`phpType=\"{$this->getPhpType()}\"` is not supported");
         }
     }
 
