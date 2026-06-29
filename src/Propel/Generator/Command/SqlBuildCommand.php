@@ -60,7 +60,7 @@ class SqlBuildCommand extends AbstractCommand
 
                         break;
                     case 'schema-name':
-                        $configOptions['propel']['generator']['schema']['basename'] = $option; // @phpstan-ignore-line
+                        $configOptions['propel']['generator']['schema']['basename'] = $option;
 
                         break;
                     case 'table-prefix':
@@ -68,7 +68,7 @@ class SqlBuildCommand extends AbstractCommand
 
                         break;
                     case 'mysql-engine':
-                        $configOptions['propel']['database']['adapters']['mysql']['tableType'] = $option; // @phpstan-ignore-line
+                        $configOptions['propel']['database']['adapters']['mysql']['tableType'] = $option;
 
                         break;
                     case 'composer-dir':

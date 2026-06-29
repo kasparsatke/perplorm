@@ -29,11 +29,6 @@ use Propel\Runtime\Map\Exception\RelationNotFoundException;
 class TableMap
 {
     /**
-     * @var array<string, string>
-     */
-    protected static $collectionClassNameCache = [];
-
-    /**
      * phpname type
      * e.g. 'AuthorId'
      *
@@ -368,16 +363,11 @@ class TableMap
     public function getCollectionClassName(): string
     {
         $collectionClassName = $this->getClassName() . 'Collection';
-
-        if (!isset(static::$collectionClassNameCache[$collectionClassName])) {
-            if (class_exists($collectionClassName) && is_subclass_of($collectionClassName, Collection::class)) {
-                static::$collectionClassNameCache[$collectionClassName] = $collectionClassName;
-            } else {
-                static::$collectionClassNameCache[$collectionClassName] = ObjectCollection::class;
-            }
+        if (class_exists($collectionClassName) && is_subclass_of($collectionClassName, Collection::class)) {
+            return $collectionClassName;
         }
 
-        return static::$collectionClassNameCache[$collectionClassName];
+        return ObjectCollection::class;
     }
 
     /**
