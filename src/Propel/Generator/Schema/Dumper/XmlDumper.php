@@ -221,13 +221,12 @@ class XmlDumper implements DumperInterface
         }
 
         $idMethod = $table->getIdMethod();
-        if ($idMethod !== IdMethod::NO_ID_METHOD) {
+        if ($idMethod !== $database->getDefaultIdMethod() && $idMethod !== IdMethod::NO_ID_METHOD) {
             $tableNode->setAttribute('idMethod', $idMethod);
         }
 
-        $phpName = $table->getPhpName();
-        if ($phpName) {
-            $tableNode->setAttribute('phpName', $phpName);
+        if ($table->hasCustomPhpName()) {
+            $tableNode->setAttribute('phpName', $table->getPhpName());
         }
 
         $package = $table->getPackage();
@@ -387,9 +386,8 @@ class XmlDumper implements DumperInterface
         $columnNode = $parentNode->appendChild($this->document->createElement('column'));
         $columnNode->setAttribute('name', $column->getName());
 
-        $phpName = $column->getPhpName();
-        if ($phpName) {
-            $columnNode->setAttribute('phpName', $phpName);
+        if ($column->hasCustomPhpName()) {
+            $columnNode->setAttribute('phpName', $column->getPhpName());
         }
 
         $columnNode->setAttribute('type', $column->getType());

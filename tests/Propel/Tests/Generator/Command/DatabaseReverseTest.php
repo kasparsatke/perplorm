@@ -65,7 +65,7 @@ class DatabaseReverseTest extends TestCaseFixturesDatabase
         $this->assertCount(1, $table);
         $table = $table[0];
         $this->assertEquals('acct_access_role', $table['name']);
-        $this->assertEquals('AcctAccessRole', $table['phpName']);
+        $this->assertEquals(null, $table['phpName']);
         $this->assertCount(2, $table->xpath('column'));
     }
 
