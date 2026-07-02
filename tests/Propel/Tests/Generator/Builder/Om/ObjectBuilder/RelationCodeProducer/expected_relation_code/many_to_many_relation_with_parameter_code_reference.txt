@@ -235,7 +235,7 @@ addMethods():
             return count($this->getTeamDayTypes());
         }
 
-        $query = ChildTeamQuery::create(null, $criteria);
+        $query = $criteria instanceof ChildTeamQuery ? clone $criteria : ChildTeamQuery::create(null, $criteria);
         if ($distinct) {
             $query->distinct();
         }

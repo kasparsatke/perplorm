@@ -282,7 +282,7 @@ addMethods():
             return count($this->getLeTeamLeEventDates());
         }
 
-        $query = ChildTeamQuery::create(null, $criteria);
+        $query = $criteria instanceof ChildTeamQuery ? clone $criteria : ChildTeamQuery::create(null, $criteria);
         if ($distinct) {
             $query->distinct();
         }

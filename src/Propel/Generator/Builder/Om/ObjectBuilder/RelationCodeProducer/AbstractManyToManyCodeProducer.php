@@ -499,7 +499,7 @@ abstract class AbstractManyToManyCodeProducer extends AbstractRelationCodeProduc
             return count(\$this->get$targetIdentifierPlural());
         }
 
-        \$query = $targetQueryClassName::create(null, \$criteria);
+        \$query = \$criteria instanceof $targetQueryClassName ? clone \$criteria : $targetQueryClassName::create(null, \$criteria);
         if (\$distinct) {
             \$query->distinct();
         }
