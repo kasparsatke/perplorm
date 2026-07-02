@@ -14,7 +14,6 @@ use Propel\Generator\Model\ForeignKey;
 use Propel\Generator\Model\PropelTypes;
 use Propel\Generator\Model\Table;
 use Propel\Runtime\ActiveQuery\Criteria;
-use Propel\Runtime\ActiveQuery\FilterExpression\ExistsFilter;
 use Propel\Runtime\ActiveQuery\FilterExpression\FilterFactory;
 use Propel\Runtime\ActiveQuery\ModelJoin;
 use Propel\Runtime\ActiveQuery\TypedModelCriteria;
@@ -1179,15 +1178,9 @@ class QueryBuilder extends AbstractOMBuilder
     protected function addUseFkQuery(string &$script, ForeignKey $fk): void
     {
         $fkTable = $fk->getForeignTable();
-        $fkQueryBuilder = $this->getStubQueryBuilder($fkTable);
-        $queryClass = $this->getClassNameFromBuilder($fkQueryBuilder, true);
-        $relationName = $this->getFKPhpNameAffix($fk);
-        $joinType = $this->getJoinType($fk);
+        $relationName = $fk->getIdentifier();
 
-        $this->addUseRelatedQuery($script, $fkTable, $queryClass, $relationName, $joinType);
-        $this->addWithRelatedQuery($script, $fkTable, $queryClass, $relationName, $joinType);
-        $this->addUseRelatedExistsQuery($script, $fkTable, $queryClass, $relationName);
-        $this->addUseRelatedInQuery($script, $fkTable, $queryClass, $relationName);
+        $this->addUseRelationMethods($script, $fk, $fkTable, $relationName);
     }
 
     /**
@@ -1201,78 +1194,34 @@ class QueryBuilder extends AbstractOMBuilder
     protected function addUseRefFkQuery(string &$script, ForeignKey $fk): void
     {
         $fkTable = $this->getTable()->getDatabase()->getTable($fk->getTableName());
-        $fkQueryBuilder = $this->getStubQueryBuilder($fkTable);
-        $queryClass = $this->getClassNameFromBuilder($fkQueryBuilder, true);
-        $relationName = $this->getRefFKPhpNameAffix($fk);
-        $joinType = $this->getJoinType($fk);
+        $relationName = $fk->getIdentifierReversed();
 
-        $this->addUseRelatedQuery($script, $fkTable, $queryClass, $relationName, $joinType);
-        $this->addWithRelatedQuery($script, $fkTable, $queryClass, $relationName, $joinType);
-        $this->addUseRelatedExistsQuery($script, $fkTable, $queryClass, $relationName);
-        $this->addUseRelatedInQuery($script, $fkTable, $queryClass, $relationName);
+        $this->addUseRelationMethods($script, $fk, $fkTable, $relationName);
     }
 
     /**
-     * Adds a useRelatedQuery method for this object.
+     * For a given relation, adds the useXXXQuery(), withXXX(), etc methods.
      *
-     * @param string $script The script will be modified in this method.
+     * @param string $script
+     * @param \Propel\Generator\Model\ForeignKey $fk
      * @param \Propel\Generator\Model\Table $fkTable
-     * @param string $queryClass
      * @param string $relationName
-     * @param string $joinType
      *
      * @return void
      */
-    protected function addUseRelatedQuery(string &$script, Table $fkTable, string $queryClass, string $relationName, string $joinType): void
+    protected function addUseRelationMethods(string &$script, ForeignKey $fk, Table $fkTable, string $relationName): void
     {
-        $script .= $this->renderLocalTemplate('useRelatedQueryTemplate', [
+        $fkQueryBuilder = $this->getStubQueryBuilder($fkTable);
+        $queryClassFq = $this->getClassNameFromBuilder($fkQueryBuilder, true);
+
+        $script .= $this->renderLocalTemplate('useRelationMethodsTemplate', [
             'relationName' => $relationName,
+            'relationDescription' => $this->getRelationDescription($relationName, $fkTable),
             'foreignTablePhpName' => $fkTable->getPhpName(),
-            'queryClass' => $queryClass,
-            'joinType' => $joinType,
-
+            'queryClass' => $this->declareClass($queryClassFq),
+            'queryClassFq' => $queryClassFq,
+            'joinType' => $this->getJoinType($fk),
         ]);
-    }
-
-    /**
-     * Adds a useExistsQuery and useNotExistsQuery to the object script.
-     *
-     * @param string $script The script will be modified in this method.
-     * @param \Propel\Generator\Model\Table $fkTable The target of the relation
-     * @param string $queryClass Query object class name that will be returned by the exists statement.
-     * @param string $relationName Name of the relation
-     *
-     * @return void
-     */
-    protected function addUseRelatedExistsQuery(string &$script, Table $fkTable, string $queryClass, string $relationName): void
-    {
-        $script .= $this->renderLocalTemplate('existsMethodsTemplate', [
-            'queryClass' => $queryClass,
-            'relationDescription' => $this->getRelationDescription($relationName, $fkTable),
-            'relationName' => $relationName,
-            'existsType' => ExistsFilter::TYPE_EXISTS,
-            'notExistsType' => ExistsFilter::TYPE_NOT_EXISTS,
-        ]);
-    }
-
-    /**
-     * Adds a useInQuery and useNotInQuery to the object script.
-     *
-     * @param string $script The script will be modified in this method.
-     * @param \Propel\Generator\Model\Table $fkTable The target of the relation
-     * @param string $queryClass Query object class name that will be returned by the IN statement.
-     * @param string $relationName Name of the relation
-     *
-     * @return void
-     */
-    protected function addUseRelatedInQuery(string &$script, Table $fkTable, string $queryClass, string $relationName): void
-    {
-        $vars = [
-            'queryClass' => $queryClass,
-            'relationDescription' => $this->getRelationDescription($relationName, $fkTable),
-            'relationName' => $relationName,
-        ];
-        $script .= $this->renderLocalTemplate('inMethodsTemplate', $vars);
     }
 
     /**
@@ -1286,27 +1235,6 @@ class QueryBuilder extends AbstractOMBuilder
         return ($relationName === $fkTable->getPhpName()) ?
             "relation to $relationName table" :
             "$relationName relation to the {$fkTable->getPhpName()} table";
-    }
-
-    /**
-     * Adds a withRelatedQuery method for this object.
-     *
-     * @param string $script The script will be modified in this method.
-     * @param \Propel\Generator\Model\Table $fkTable
-     * @param string $queryClass
-     * @param string $relationName
-     * @param string $joinType
-     *
-     * @return void
-     */
-    protected function addWithRelatedQuery(string &$script, Table $fkTable, string $queryClass, string $relationName, string $joinType): void
-    {
-        $script .= $this->renderLocalTemplate('withRelationQueryTemplate', [
-            'relationName' => $relationName,
-            'queryClass' => $queryClass,
-            'foreignTablePhpName' => $fkTable->getPhpName(),
-            'joinType' => $joinType,
-        ]);
     }
 
     /**
