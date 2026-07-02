@@ -291,10 +291,11 @@ class ObjectCollectionWithFixturesTest extends BookstoreEmptyTestBase
         BookTableMap::clearInstancePool();
         $authors = AuthorQuery::create()->find();
         $books = $authors->populateRelation('Book');
-        $this->assertTrue($books instanceof ObjectCollection, 'populateRelation() returns a Collection instance');
-        $this->assertEquals('Book', $books->getModel(), 'populateRelation() returns a collection of the related objects');
-        $this->assertEquals('\Propel\Tests\Bookstore\Book', $books->getFullyQualifiedModel(), 'populateRelation() returns a collection of the related objects');
-        $this->assertEquals(4, count($books), 'populateRelation() the list of related objects');
+
+        $this->assertInstanceOf(ObjectCollection::class, $books);
+        $this->assertEquals('Book', $books->getModel());
+        $this->assertEquals('\Propel\Tests\Bookstore\Book', $books->getFullyQualifiedModel());
+        $this->assertCount(4, $books);
     }
 
     /**
@@ -305,10 +306,9 @@ class ObjectCollectionWithFixturesTest extends BookstoreEmptyTestBase
         AuthorTableMap::clearInstancePool();
         BookTableMap::clearInstancePool();
         $authors = AuthorQuery::create()->find();
-        $c = new Criteria();
-        $c->setLimit(3);
+        $c = (new Criteria())->setLimit(3);
         $books = $authors->populateRelation('Book', $c);
-        $this->assertEquals(3, count($books), 'populateRelation() accepts an optional criteria object to filter the query');
+        $this->assertCount(3, $books, 'populateRelation() accepts an optional criteria object to filter the query');
     }
 
     /**
@@ -338,14 +338,15 @@ class ObjectCollectionWithFixturesTest extends BookstoreEmptyTestBase
         AuthorTableMap::clearInstancePool();
         BookTableMap::clearInstancePool();
         $authors = AuthorQuery::create()->find($this->con);
-        $count = $this->con->getQueryCount();
+        $this->con->resetQueryCount();
+
         $books = $authors->populateRelation('Book', null, $this->con);
         foreach ($authors as $author) {
             foreach ($author->getBooks() as $book) {
                 $this->assertEquals($author, $book->getAuthor());
             }
         }
-        $this->assertEquals($count + 1, $this->con->getQueryCount(), 'populateRelation() populates a one-to-many relationship with a single supplementary query');
+        $this->assertEquals(1, $this->con->getQueryCount(), 'populateRelation() populates a one-to-many relationship with a single supplementary query');
     }
 
     /**
@@ -353,15 +354,23 @@ class ObjectCollectionWithFixturesTest extends BookstoreEmptyTestBase
      */
     public function testPopulateRelationManyToOne()
     {
-        $con = Propel::getServiceContainer()->getReadConnection(BookTableMap::DATABASE_NAME);
         AuthorTableMap::clearInstancePool();
         BookTableMap::clearInstancePool();
-        $books = BookQuery::create()->find($con);
-        $count = $con->getQueryCount();
-        $books->populateRelation('Author', null, $con);
+        $books = BookQuery::create()->find();
+        $this->con->resetQueryCount();
+
+        $authors = $books->populateRelation('Author', null, $this->con);
         foreach ($books as $book) {
             $author = $book->getAuthor();
         }
-        $this->assertEquals($count + 1, $con->getQueryCount(), 'populateRelation() populates a many-to-one relationship with a single supplementary query');
+        $this->assertEquals(1, $this->con->getQueryCount(), 'many-to-one relationship was populated with single query');
+
+        $this->con->resetQueryCount();
+        foreach ($authors as $author) {
+            foreach ($author->getBooks() as $book) {
+                $this->assertEquals($author, $book->getAuthor());
+            }
+        }
+        $this->assertEquals(0, $this->con->getQueryCount(), 'one-side of many-to-one was populated as well');
     }
 }
