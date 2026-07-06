@@ -391,28 +391,47 @@ class ObjectCollection extends Collection
             ->find($con);
 
         if ($relationMap->getType() === RelationMap::ONE_TO_MANY) {
-            // initialize the embedded collections of the main objects
-            $relationName = $relationMap->getName();
-            $resetPartialStatusMethod = 'resetPartial' . $relationMap->getPluralName();
-            foreach ($this as $mainObj) {
-                $mainObj->initRelation($relationName);
-                $mainObj->$resetPartialStatusMethod(false);
-            }
-            // associate the related objects to the main objects
-            $getMethod = 'get' . $symRelationMap->getName();
-            $addMethod = 'add' . $relationName;
-            foreach ($relatedObjects as $object) {
-                $mainObj = $object->$getMethod(); // instance pool is used here to avoid a query
-                $mainObj->$addMethod($object);
-            }
+            $this->populateRelationManySide($relatedObjects->data, $symRelationMap->getName(), $this->data, $relationMap, !$criteria);
         } elseif ($relationMap->getType() === RelationMap::MANY_TO_ONE) {
-            // nothing to do; the instance pool will catch all calls to getRelatedObject()
-            // and return the object in memory
+            $this->populateRelationManySide($this->data, $relationMap->getName(), $relatedObjects->data, $symRelationMap, !$criteria);
         } else {
             throw new UnsupportedRelationException(__METHOD__ . ' does not support this relation type');
         }
 
         return $relatedObjects;
+    }
+
+    /**
+     * @param array $manySideObjects
+     * @param string $relationToOneName
+     * @param array $oneSideObjects
+     * @param \Propel\Runtime\Map\RelationMap $relationToMany
+     * @param $bool $isFullyResolved
+     *
+     * @return void
+     */
+    protected function populateRelationManySide(
+        array $manySideObjects,
+        string $relationToOneName,
+        array $oneSideObjects,
+        RelationMap $relationToMany,
+        bool $isFullyResolved
+    ) {
+        $relationToManyName = $relationToMany->getName();
+
+        if ($isFullyResolved) {
+            $resetPartialStatusMethod = 'resetPartial' . $relationToMany->getPluralName();
+            foreach ($oneSideObjects as $sourceObject) {
+                $sourceObject->initRelation($relationToManyName);
+                $sourceObject->$resetPartialStatusMethod(false); // mark relation as completely resolved (not partial)
+            }
+        }
+
+        $getSourceFromTarget = 'get' . $relationToOneName;
+        $registerTargetOnSource = 'add' . $relationToManyName;
+        foreach ($manySideObjects as $targetObject) {
+            $targetObject->$getSourceFromTarget()->$registerTargetOnSource($targetObject);
+        }
     }
 
     /**

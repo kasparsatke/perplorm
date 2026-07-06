@@ -12,7 +12,6 @@
         $tableMap = $this->getTableMap();
         $relationMap = $tableMap->getRelation('<?= $relationName ?>');
 
-        // create a ModelJoin object for this join
         $join = new ModelJoin();
         $join->setJoinType($joinType);
         $leftAlias = $this->useAliasInSQL ? $this->getModelAlias() : null;
@@ -22,13 +21,9 @@
             $join->setPreviousJoin($previousJoin);
         }
 
-        // add the ModelJoin to the current object
         if ($relationAlias) {
             $this->addAlias($relationAlias, $relationMap->getRightTable()->getName());
-            $this->addJoinObject($join, $relationAlias);
-        } else {
-            $this->addJoinObject($join, '<?= $relationName ?>');
         }
 
-        return $this;
+        return $this->addJoinObject($join, $relationAlias ?: '<?= $relationName ?>');
     }

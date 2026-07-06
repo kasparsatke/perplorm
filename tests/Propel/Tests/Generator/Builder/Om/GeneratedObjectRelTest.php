@@ -210,6 +210,17 @@ class GeneratedObjectRelTest extends BookstoreEmptyTestBase
         $this->assertFalse(method_exists('Propel\Tests\Bookstore\BookClubList', 'countBookClubLists'), 'Object generator correctly adds counter for the crossRefFk');
     }
 
+    public function testCountRelationDoesNotChangeCriteriaArgument()
+    {
+        $bookClubList = new BookClubList();
+        $bookClubList->setNew(false);
+        $bookFilter = BookQuery::create()->filterByTitle('Harry Potter and the Order of the Phoenix');
+        $bookFilterSqlReference = $bookFilter->toString();
+        $bookClubList->countBooks($bookFilter);
+
+        $this->assertSame($bookFilterSqlReference, $bookFilter->toString());
+    }
+
     /**
      * @return void
      */
@@ -230,29 +241,12 @@ class GeneratedObjectRelTest extends BookstoreEmptyTestBase
     public function testManyToManyCounter()
     {
         BookstoreDataPopulator::populate();
-        /** @var \Propel\Tests\Bookstore\BookClubList $blc1 */
         $blc1 = BookClubListQuery::create()->findOneByGroupLeader('Crazyleggs');
         $nbBooks = $blc1->countBooks();
         $this->assertEquals(2, $nbBooks, 'countCrossRefFK() returns the correct list of objects');
 
-        $query = BookQuery::create()
-            ->filterByTitle('Harry Potter and the Order of the Phoenix');
-        $nbBooks = $blc1->countBooks($query); // adds a join
-
-        $bla = BookListRelQuery::create(null)
-            ->filterByBookClubList($blc1);
-
-        $bla2 = BookListRelQuery::create(null, $query)
-            ->filterByBookClubList($blc1);
-
-        $bla3 = BookListRelQuery::create()
-            ->useBookQuery()->filterByTitle('Harry Potter and the Order of the Phoenix')->endUse()
-            ->filterByBookClubList($blc1);
-
-        $items = iterator_to_array($bla->find());
-        $items2 = iterator_to_array($bla2->find());
-        $items3 = iterator_to_array($bla3->find());
-
+        $query = BookQuery::create()->filterByTitle('Harry Potter and the Order of the Phoenix');
+        $nbBooks = $blc1->countBooks($query);
         $this->assertEquals(1, $nbBooks, 'countCrossRefFK() accepts a query as first parameter');
     }
 

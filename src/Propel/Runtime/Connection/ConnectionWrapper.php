@@ -621,6 +621,19 @@ class ConnectionWrapper implements ConnectionInterface, LoggerAwareInterface
     }
 
     /**
+     * Resets the count of executed queries and returns the previous value.
+     *
+     * @return int
+     */
+    public function resetQueryCount(): int
+    {
+        $count = $this->queryCount;
+        $this->queryCount = 0;
+
+        return $count;
+    }
+
+    /**
      * Get the SQL code for the latest query executed by Propel
      *
      * @return string Executable SQL code
