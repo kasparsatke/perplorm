@@ -179,7 +179,8 @@ class ModelCriteriaUseQueryTest extends BookstoreTestBase
             ->filterByISBN('baz')
             ->createSelectSql($params);
 
-        $expectedSQL = $this->getSql("SELECT  FROM book LEFT JOIN author ON (book.author_id=author.id) WHERE ((book.price=:p1 OR (author.age=:p2 OR author.first_name=:p3)) OR book.title=:p4) AND book.isbn=:p5");
+        $columns = 'book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id';
+        $expectedSQL = $this->getSql("SELECT $columns FROM book LEFT JOIN author ON (book.author_id=author.id) WHERE ((book.price=:p1 OR (author.age=:p2 OR author.first_name=:p3)) OR book.title=:p4) AND book.isbn=:p5");
 
         $this->assertEquals($expectedSQL, $sql);
     }

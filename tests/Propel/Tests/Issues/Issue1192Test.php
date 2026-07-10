@@ -59,7 +59,7 @@ END;
         $actualSql = $query->createSelectSql($params);
 
         $this->assertSame(
-            'SELECT  FROM issue_1192_item WHERE issue_1192_item.target & :p1 = :p2',
+            'SELECT issue_1192_item.target FROM issue_1192_item WHERE issue_1192_item.target & :p1 = :p2',
             $actualSql,
             'Generated SQL does not match expected SQL'
         );

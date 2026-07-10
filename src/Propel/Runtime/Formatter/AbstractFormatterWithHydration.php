@@ -4,12 +4,16 @@ declare(strict_types = 1);
 
 namespace Propel\Runtime\Formatter;
 
-use Propel\Runtime\ActiveRecord\ActiveRecordInterface;
-use Propel\Runtime\Collection\ArrayCollection;
+use Propel\Runtime\ActiveQuery\BaseModelCriteria;
+use Propel\Runtime\DataFetcher\DataFetcherInterface;
 use ReflectionClass;
+use function array_keys;
 use function in_array;
 
 /**
+ * Same as ObjectFormatter, except objects are turned to tuples and pooled by reference.
+ * TODO: I think this should be generalized to ObjectFormatter code, and tuple/array specifics moved to ArrayFormatter
+ *
  * @template RowFormat
  * @template ListType of \Traversable<RowFormat>
  * @extends \Propel\Runtime\Formatter\AbstractFormatter<RowFormat, ListType>
@@ -17,35 +21,31 @@ use function in_array;
 abstract class AbstractFormatterWithHydration extends AbstractFormatter
 {
     /**
+     * Class name to primary key to tuple
+     *
      * @var array<string, array<string, array<string, mixed>>>
      */
-    protected $alreadyHydratedObjects = [];
+    protected $localTuplePool = [];
 
     /**
-     * @var array<ListType>
+     * @var array<string>
      */
-    protected $emptyVariable = [];
+    protected array $virtualColumnNames = [];
 
     /**
-     * @param \Propel\Runtime\ActiveRecord\ActiveRecordInterface|null $record
+     * @param \Propel\Runtime\ActiveQuery\BaseModelCriteria $criteria
+     * @param \Propel\Runtime\DataFetcher\DataFetcherInterface|null $dataFetcher
      *
-     * @return array<string, mixed> The original record turned into an array
+     * @return $this The current formatter object
      */
     #[\Override]
-    public function formatRecord(?ActiveRecordInterface $record = null): array
+    public function init(BaseModelCriteria $criteria, ?DataFetcherInterface $dataFetcher = null)
     {
-        return $record ? $record->toArray() : [];
-    }
+        parent::init($criteria);
 
-    /**
-     * @psalm-return class-string<\Propel\Runtime\Collection\ArrayCollection>
-     *
-     * @return string|null
-     */
-    #[\Override]
-    public function getCollectionClassName(): ?string
-    {
-        return ArrayCollection::class;
+        $this->virtualColumnNames = array_keys($criteria->getAsColumns());
+
+        return $this;
     }
 
     /**
@@ -60,25 +60,24 @@ abstract class AbstractFormatterWithHydration extends AbstractFormatter
      */
     protected function &hydratePropelObjectCollection(array $row): array
     {
-        $col = 0;
+        $rowOffset = 0;
+        $indexType = $this->getDataFetcher()->getIndexType();
 
         // hydrate main object or take it from registry
-        $mainObjectIsNew = false;
         $this->checkInit();
         /** @var \Propel\Runtime\Map\TableMap $tableMap */
         $tableMap = $this->tableMap;
-        $indexType = $this->getDataFetcher()->getIndexType();
         $mainKey = $tableMap::getPrimaryKeyHashFromRow($row, 0, $indexType);
         // we hydrate the main object even in case of a one-to-many relationship
         // in order to get the $col variable increased anyway
-        $mainObject = $this->getSingleObjectFromRow($row, (string)$this->class, $col);
+        $mainObject = $this->getSingleObjectFromRow($row, (string)$this->class, $rowOffset);
 
-        if (!isset($this->alreadyHydratedObjects[$this->class][$mainKey])) {
-            $this->alreadyHydratedObjects[$this->class][$mainKey] = $mainObject->toArray();
-            $mainObjectIsNew = true;
+        $mainObjectIsNew = !isset($this->localTuplePool[$this->class][$mainKey]);
+        if ($mainObjectIsNew) {
+            $this->localTuplePool[$this->class][$mainKey] = $mainObject->toArray();
         }
 
-        $hydrationChain = [];
+        $relatedTuplesByPhpName = [];
 
         // related objects added using with()
         foreach ($this->getRelatedModelsToPopulate() as $relationAlias => $relationPopulator) {
@@ -87,60 +86,62 @@ abstract class AbstractFormatterWithHydration extends AbstractFormatter
                 $class = $relationPopulator->getModelName();
             } else {
                 /** @var class-string<object>|object $class */
-                $class = $relationPopulator->getTableMap()::getOMClass($row, $col, false);
+                $class = $relationPopulator->getTableMap()::getOMClass($row, $rowOffset, false);
                 $reflectionClass = new ReflectionClass($class);
                 $class = $reflectionClass->getName();
                 if ($reflectionClass->isAbstract()) {
                     $tableMapClass = "Map\\{$class}TableMap";
-                    $col += $tableMapClass::NUM_COLUMNS;
+                    $rowOffset += $tableMapClass::NUM_COLUMNS;
 
                     continue;
                 }
             }
 
             // hydrate related object or take it from registry
-            $key = $relationPopulator->getTableMap()::getPrimaryKeyHashFromRow($row, $col, $indexType) ?? 'null';
+            $key = $relationPopulator->getTableMap()::getPrimaryKeyHashFromRow($row, $rowOffset, $indexType) ?? 'null';
             // we hydrate the main object even in case of a one-to-many relationship
             // in order to get the $col variable increased anyway
-            $relatedObject = $this->getSingleObjectFromRow($row, $class, $col);
-            if (!isset($this->alreadyHydratedObjects[$relationAlias][$key])) {
-                $this->alreadyHydratedObjects[$relationAlias][$key] = $relatedObject->isPrimaryKeyNull() ? [] : $relatedObject->toArray();
+            $relatedObject = $this->getSingleObjectFromRow($row, $class, $rowOffset);
+            if (!isset($this->localTuplePool[$relationAlias][$key])) {
+                $this->localTuplePool[$relationAlias][$key] = $relatedObject->isPrimaryKeyNull() ? [] : $relatedObject->toArray();
             }
+            $relatedTuple = &$this->localTuplePool[$relationAlias][$key];
 
             if ($relationPopulator->joinsToMainModel()) {
-                $arrayToAugment = &$this->alreadyHydratedObjects[$this->class][$mainKey];
+                $parentTuple = &$this->localTuplePool[$this->class][$mainKey];
             } else {
-                $arrayToAugment = &$hydrationChain[$relationPopulator->getLeftPhpName()];
+                $parentTuple = &$relatedTuplesByPhpName[$relationPopulator->getLeftPhpName()];
             }
 
             $relationName = $relationPopulator->getRelationName();
             if (!$relationPopulator->populatesListOnTarget()) {
-                $arrayToAugment[$relationName] = &$this->alreadyHydratedObjects[$relationAlias][$key];
+                $parentTuple[$relationName] = &$relatedTuple;
             } elseif (
-                !isset($arrayToAugment[$relationName]) ||
+                !isset($parentTuple[$relationName]) ||
                 !in_array(
-                    $this->alreadyHydratedObjects[$relationAlias][$key],
-                    $arrayToAugment[$relationName],
+                    $this->localTuplePool[$relationAlias][$key],
+                    $parentTuple[$relationName],
                     true,
                 )
             ) {
-                $arrayToAugment[$relationName][] = &$this->alreadyHydratedObjects[$relationAlias][$key];
+                $parentTuple[$relationName][] = &$relatedTuple;
             }
 
-            $hydrationChain[$relationPopulator->getRightPhpName()] = &$this->alreadyHydratedObjects[$relationAlias][$key];
+            $relatedTuplesByPhpName[$relationPopulator->getRightPhpName()] = &$relatedTuple;
         }
 
         // columns added using withColumn()
-        foreach ($this->getAsColumns() as $alias => $clause) {
-            $this->alreadyHydratedObjects[$this->class][$mainKey][$alias] = $row[$col];
-            $col++;
+        foreach ($this->virtualColumnNames as $columnName) {
+            $this->localTuplePool[$this->class][$mainKey][$columnName] = $row[$rowOffset];
+            $rowOffset++;
         }
 
-        if ($mainObjectIsNew) {
-            return $this->alreadyHydratedObjects[$this->class][$mainKey];
+        if ($mainObjectIsNew) { // NOTE: no ternary if, requires return by reference
+            return $this->localTuplePool[$this->class][$mainKey];
         }
 
-        // we still need to return a reference to something to avoid a warning
-        return $this->emptyVariable;
+        $emptyTupleReference = [];
+
+        return $emptyTupleReference;
     }
 }

@@ -11,7 +11,9 @@ namespace Propel\Tests\Runtime\ActiveQuery;
 use Propel\Runtime\ActiveQuery\Criteria;
 use Propel\Runtime\ActiveQuery\ModelCriteria;
 use Propel\Runtime\Formatter\ArrayFormatter;
+use Propel\Runtime\Formatter\SimpleArrayFormatter;
 use Propel\Tests\TestCaseFixtures;
+use stdClass;
 
 /**
  * @group database
@@ -27,12 +29,12 @@ class CriteriaIsEmptyTest extends TestCaseFixtures
             ['select column', false, (new Criteria())->addSelectColumn('id')],
             ['AS column', false, (new Criteria())->addAsColumn('id', 'id')],
             ['select modifier', false, (new Criteria())->addSelectModifier('DISTINCT')],
-            ['column filters', false, (new Criteria())->addFilter('id', 5)],
+            ['column filters', false, (new Criteria())->addAnd('id', 5)],
             ['having', false, (new Criteria())->addHaving('id')],
             ['join', false, (new Criteria())->addJoin('l.id', 'r.id')],
             ['update values', false, (new Criteria())->setUpdateValue('id', 3, \PDO::PARAM_STR)],
             
-            ['select', false, (new ModelCriteria())->select('id')],
+            ['select', false, (new ModelCriteria())->setFormatter(new SimpleArrayFormatter())->select('id')],
             ['formatter', false, (new ModelCriteria())->setFormatter(new ArrayFormatter())],
             ['modelAlias', false, new ModelCriteria(null, null, 'alias')],
            // ['with', false, (new ModelCriteria())->],

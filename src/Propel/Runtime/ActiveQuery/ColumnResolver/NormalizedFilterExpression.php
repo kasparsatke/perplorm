@@ -14,7 +14,7 @@ class NormalizedFilterExpression
     /**
      * @var string
      */
-    public const COLUMN_LITERAL_PATTERN = '/[\w§\\\]+\.\w*[A-Za-z]\w*/';
+    public const COLUMN_LITERAL_PATTERN = '/[\w§\\\]+\.\w*[A-Za-z]\w*/'; // i.e. 'sqliteschema§table.column'
 
     /**
      * @var string
@@ -32,7 +32,7 @@ class NormalizedFilterExpression
      * @param string $normalizedFilterExpression
      * @param array $replacedColumns
      */
-    protected function __construct(string $normalizedFilterExpression, array $replacedColumns)
+    public function __construct(string $normalizedFilterExpression, array $replacedColumns)
     {
         $this->normalizedFilterExpression = $normalizedFilterExpression;
         $this->replacedColumns = $replacedColumns;

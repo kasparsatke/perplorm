@@ -46,7 +46,7 @@ class ColumnToQueryOperatorCriterionTest extends TestCaseFixtures
         $filter = new ColumnToQueryOperatorCriterion($outer, 'id', $operator, $inner);
 
         $operatorLiteral = trim($operator);
-        $expected = "id $operatorLiteral (SELECT book.author_id AS \"author_id\" FROM book WHERE book.price<=:p1)";
+        $expected = "id $operatorLiteral (SELECT book.author_id FROM book WHERE book.price<=:p1)";
         $this->assertCreatedSqlSame($expected, $filter);
     }
 
@@ -62,7 +62,7 @@ class ColumnToQueryOperatorCriterionTest extends TestCaseFixtures
         $in = ColumnToQueryOperatorCriterion::createForRelation($outer, $relation, $operator, $inner);
 
         $operatorLiteral = trim($operator);
-        $expected = "author.id $operatorLiteral (SELECT book.author_id AS \"book.author_id\" FROM book WHERE book.price<=:p1)";
+        $expected = "author.id $operatorLiteral (SELECT book.author_id FROM book WHERE book.price<=:p1)";
         $this->assertCreatedSqlSame($expected, $in);
     }
 

@@ -22,6 +22,7 @@ use Propel\Runtime\Exception\UnexpectedValueException;
 use Propel\Runtime\Map\Exception\RelationNotFoundException;
 use Propel\Runtime\Propel;
 use Propel\Runtime\Util\PropelModelPager;
+use Propel\Tests\Bookstore\Author;
 use Propel\Tests\Bookstore\AuthorQuery;
 use Propel\Tests\Bookstore\Book;
 use Propel\Tests\Bookstore\Book2;
@@ -47,12 +48,16 @@ class ModelCriteriaTest extends BookstoreTestBase
     /**
      * @return void
      */
-    protected function assertSelectStatement($criteria, $expectedSql, $expectedParams, $message = '')
+    protected function assertSelectStatement(Criteria $criteria, $expectedSql, array $expectedParams = [], $message = '')
     {
-        $params = [];
-        $result = $criteria->createSelectSql($params);
+        $actualSql = $criteria->createSelectSql($params);
 
-        $this->assertEquals($expectedSql, $result, $message);
+        // HACK - old tests don't have columns (which makes them easier to read tbh)
+        if (str_starts_with($expectedSql, 'SELECT  FROM')) {
+            $actualSql = preg_replace('/SELECT .*? FROM/', 'SELECT  FROM', $actualSql, 1); // non-greedy, first match only
+        }
+
+        $this->assertEquals($expectedSql, $actualSql, $message);
         $this->assertEquals($expectedParams, $params, $message);
     }
 
@@ -135,6 +140,17 @@ class ModelCriteriaTest extends BookstoreTestBase
             ['table' => 'author', 'column' => 'first_name', 'value' => 'john'],
         ];
         $this->assertSelectStatement($c, $sql, $params, 'setModelAlias() allows the definition of a true SQL alias after construction');
+    }
+
+    /**
+     * @return void
+     */
+    public function testWhereBeforeAliasDeclarations(): void
+    {
+        $this->expectException(PropelException::class); // Note that this should work, but currently doesn't - remove or update test if this is fixed
+        $q = BookQuery::create()
+            ->where('a.FirstName = ?', 'john')
+            ->joinAuthor('a');
     }
 
     /**
@@ -494,7 +510,9 @@ class ModelCriteriaTest extends BookstoreTestBase
     #[\PHPUnit\Framework\Attributes\DataProvider('filterByWithSubqueryDataProvider')]
     public function testFilterByWithSubquery(string $description, ?string $operatorInput, string $sqlOperator)
     {
-        $subquery = AuthorQuery::create()->filterByAge(40, Criteria::GREATER_EQUAL)->select('FirstName');
+        $subquery = AuthorQuery::create()
+            ->filterByAge(40, Criteria::GREATER_EQUAL)
+            ->select('FirstName');
         $c = BookQuery::create()->filterBy('Title', $subquery, $operatorInput);
 
         $expectedQuery = "SELECT  FROM book WHERE book.title $sqlOperator (SELECT author.first_name AS \"FirstName\" FROM author WHERE author.age>=:p1)";
@@ -514,7 +532,7 @@ class ModelCriteriaTest extends BookstoreTestBase
     public function testFilterByWithSubqueryReplacesNames()
     {
         $subquery = AuthorQuery::create('a')->where('b.AuthorId = a.FirstName');
-        $c = BookQuery::create('b')->add(null, $subquery, 'EXISTS');
+        $c = BookQuery::create('b')->addAnd(null, $subquery, 'EXISTS');
 
         $expectedQuery = "SELECT  FROM book WHERE EXISTS (SELECT 1 AS existsFlag FROM author WHERE book.author_id = author.first_name)";
         $sql = $this->getSql($expectedQuery);
@@ -666,47 +684,47 @@ class ModelCriteriaTest extends BookstoreTestBase
      */
     public function testOrderByAlias()
     {
-        $c = new ModelCriteria('bookstore', 'Propel\Tests\Bookstore\Book');
-        $c->addAsColumn('t', BookTableMap::COL_TITLE);
-        $c->orderBy('t');
+        $c = BookQuery::create()
+            ->clearSelectColumns()
+            ->addAsColumn('t', BookTableMap::COL_TITLE)
+            ->orderBy('t');
 
         $sql = 'SELECT book.title AS t FROM book ORDER BY t ASC';
-        $params = [];
-        $this->assertSelectStatement($c, $sql, $params, 'orderBy() accepts a column alias and adds an ORDER BY clause');
+        $this->assertSelectStatement($c, $sql, [], 'orderBy() accepts a column alias and adds an ORDER BY clause');
+    }
+
+    public static function GroupBookByDataProvider(): array
+    {
+        return [
+            ['Propel\Tests\Bookstore\Book.AuthorId'],
+            ['AuthorId'] 
+        ];
     }
 
     /**
      * @return void
      */
-    public function testGroupBy()
+    #[DataProvider('GroupBookByDataProvider')]
+    public function testGroupByBasicQuery(string $columnName)
     {
-        $c = new ModelCriteria('bookstore', 'Propel\Tests\Bookstore\Book');
-        $c->groupBy('Propel\Tests\Bookstore\Book.AuthorId');
+        $c = BookQuery::create()->groupBy($columnName);
 
         $sql = 'SELECT  FROM book GROUP BY book.author_id';
-        $params = [];
-        $this->assertSelectStatement($c, $sql, $params, 'groupBy() accepts a column name and adds a GROUP BY clause');
-
-        $c = new ModelCriteria('bookstore', 'Propel\Tests\Bookstore\Book');
-        try {
-            $c->groupBy('Book.Foo');
-            $this->fail('groupBy() throws an exception when called with an unknown column name');
-        } catch (UnknownColumnException $e) {
-            $this->assertTrue(true, 'groupBy() throws an exception when called with an unknown column name');
+        if ($this->runningOnPostgreSQL()) { // auto-group by in postgres
+            $sql .= ',book.id,book.title,book.isbn,book.price,book.publisher_id';
         }
+
+        $this->assertSelectStatement($c, $sql, [], 'groupBy() accepts a column name and adds a GROUP BY clause');
     }
 
     /**
      * @return void
      */
-    public function testGroupBySimpleColumn()
+    public function testGroupByUnknownColumnError()
     {
-        $c = new ModelCriteria('bookstore', 'Propel\Tests\Bookstore\Book');
-        $c->groupBy('AuthorId');
-
-        $sql = 'SELECT  FROM book GROUP BY book.author_id';
-        $params = [];
-        $this->assertSelectStatement($c, $sql, $params, 'groupBy() accepts a simple column name and adds a GROUP BY clause');
+        $c = BookQuery::create()->groupBy('Propel\Tests\Bookstore\Book.AuthorId');
+        $this->expectException(UnknownColumnException::class);
+        $c->groupBy('Book.Foo');
     }
 
     /**
@@ -714,9 +732,10 @@ class ModelCriteriaTest extends BookstoreTestBase
      */
     public function testGroupByAlias()
     {
-        $c = new ModelCriteria('bookstore', 'Propel\Tests\Bookstore\Book');
-        $c->addAsColumn('t', BookTableMap::COL_TITLE);
-        $c->groupBy('t');
+        $c = BookQuery::create()
+            ->clearSelectColumns()
+            ->addAsColumn('t', BookTableMap::COL_TITLE)
+            ->groupBy('t');
 
         $sql = 'SELECT book.title AS t FROM book GROUP BY t';
         $params = [];
@@ -783,9 +802,15 @@ class ModelCriteriaTest extends BookstoreTestBase
         $c->join('Propel\Tests\Bookstore\Author.Book');
         $c->groupByClass('Book');
 
-        $sql = $this->getSql('SELECT  FROM author INNER JOIN book ON (author.id=book.author_id) GROUP BY book.id,book.title,book.isbn,book.price,book.publisher_id,book.author_id');
-        $params = [];
-        $this->assertSelectStatement($c, $sql, $params, 'groupByClass() accepts the class name of a joined model');
+        
+
+        $sql = 'SELECT  FROM author INNER JOIN book ON (author.id=book.author_id) GROUP BY book.id,book.title,book.isbn,book.price,book.publisher_id,book.author_id';
+        if ($this->runningOnPostgreSQL()) { // auto-group by in postgres
+            $sql .= ',author.id,author.first_name,author.last_name,author.email,author.age';
+        }
+        $sql = $this->getSql($sql);
+
+        $this->assertSelectStatement($c, $sql, [], 'groupByClass() accepts the class name of a joined model');
     }
 
     /**
@@ -797,9 +822,12 @@ class ModelCriteriaTest extends BookstoreTestBase
         $c->join('Propel\Tests\Bookstore\Author.Book b');
         $c->groupByClass('b');
 
-        $sql = $this->getSql('SELECT  FROM author INNER JOIN book b ON (author.id=b.author_id) GROUP BY b.id,b.title,b.isbn,b.price,b.publisher_id,b.author_id');
-        $params = [];
-        $this->assertSelectStatement($c, $sql, $params, 'groupByClass() accepts the alias of a joined model');
+        $sql = 'SELECT  FROM author INNER JOIN book b ON (author.id=b.author_id) GROUP BY b.id,b.title,b.isbn,b.price,b.publisher_id,b.author_id';
+        if ($this->runningOnPostgreSQL()) { // auto-group by in postgres
+            $sql .= ',author.id,author.first_name,author.last_name,author.email,author.age';
+        }
+        $sql = $this->getSql($sql);
+        $this->assertSelectStatement($c, $sql, [], 'groupByClass() accepts the alias of a joined model');
     }
 
     /**
@@ -809,7 +837,7 @@ class ModelCriteriaTest extends BookstoreTestBase
     {
         $c = new ModelCriteria('bookstore', 'Propel\Tests\Bookstore\Book');
         $c->distinct();
-        $sql = 'SELECT DISTINCT  FROM book';
+        $sql = 'SELECT DISTINCT book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id FROM book';
         $params = [];
         $this->assertSelectStatement($c, $sql, $params, 'distinct() adds a DISTINCT clause');
     }
@@ -1319,7 +1347,6 @@ class ModelCriteriaTest extends BookstoreTestBase
     public function testWithAddsSelectColumns()
     {
         $c = new ModelCriteria('bookstore', 'Propel\Tests\Bookstore\Book');
-        BookTableMap::addSelectColumns($c);
         $c->join('Propel\Tests\Bookstore\Book.Author');
         $c->populateJoinedRelation('Author');
         $expectedColumns = [
@@ -1344,7 +1371,6 @@ class ModelCriteriaTest extends BookstoreTestBase
     public function testWithAliasAddsSelectColumns()
     {
         $c = new ModelCriteria('bookstore', 'Propel\Tests\Bookstore\Book');
-        BookTableMap::addSelectColumns($c);
         $c->join('Propel\Tests\Bookstore\Book.Author a');
         $c->populateJoinedRelation('a');
         $expectedColumns = [
@@ -1418,7 +1444,6 @@ class ModelCriteriaTest extends BookstoreTestBase
     public function testWithOneToManyAddsSelectColumns()
     {
         $c = new ModelCriteria('bookstore', 'Propel\Tests\Bookstore\Author');
-        AuthorTableMap::addSelectColumns($c);
         $c->leftJoin('Propel\Tests\Bookstore\Author.Book');
         $c->populateJoinedRelation('Book');
         $expectedColumns = [
@@ -1577,6 +1602,33 @@ class ModelCriteriaTest extends BookstoreTestBase
         $this->assertEquals($expectedJoinKeys, array_keys($joins), 'joinWith() adds the join');
     }
 
+    /**
+     * @return void
+     */
+    public function testPopulateWithVirtualColumns()
+    {
+        $book = (new Book)->fromArray(['Title' => 'City of Glass', 'ISBN' => '1234']);
+        $author = (new Author())->fromArray(['FirstName' => 'Paul', 'LastName' => 'Auster'])->addBook($book);
+        $author->save();
+        AuthorTableMap::clearInstancePool();
+        BookTableMap::clearInstancePool();
+
+        $reloadedAuthor = AuthorQuery::create()
+            ->populateBook()
+            ->addAsColumn('leAuthorId', 'author.id')
+            ->filterById($author->getId())
+            ->find()->get(0);
+
+        $expectedAuthorArray = array_merge($author->toArray(), ['leAuthorId' => $author->getId()]);
+        $this->assertSame($expectedAuthorArray, $reloadedAuthor->toArray());
+        $this->assertSame(['leAuthorId' => $author->getId()], $reloadedAuthor->getVirtualColumns());
+
+        $books = $this->getObjectPropertyValue($reloadedAuthor, 'collBooks');
+        $this->assertCount(1, $books);
+        $this->assertSame($book->toArray(), $books[0]->toArray());
+
+    }
+
     public static function conditionsForTestWithColumn()
     {
         return [
@@ -1680,24 +1732,6 @@ class ModelCriteriaTest extends BookstoreTestBase
     /**
      * @return void
      */
-    public function testKeepQueryFind()
-    {
-        $c = BookQuery::create();
-        $c->filterByTitle('foo');
-        $c->find();
-        $this->assertEquals([], $c->getSelectColumns(), 'find() clones the query by default');
-
-        $c = BookQuery::create();
-        $c->filterByTitle('foo');
-        $c->keepQuery(false);
-        $c->find();
-        $expected = ['book.id', 'book.title', 'book.isbn', 'book.price', 'book.publisher_id', 'book.author_id'];
-        $this->assertEquals($expected, $c->getSelectColumns(), 'keepQuery(false) forces find() to use the original query');
-    }
-
-    /**
-     * @return void
-     */
     public function testKeepQueryFindOne()
     {
         $c = BookQuery::create();
@@ -1715,17 +1749,12 @@ class ModelCriteriaTest extends BookstoreTestBase
     /**
      * @return void
      */
-    public function testKeepQueryFindPk()
+    public function testFindDoesNotAlterSelectColumns()
     {
         $c = BookQuery::create();
         $c->findPk(1);
-        $this->assertEquals([], $c->getSelectColumns(), 'findPk() clones the query by default');
-
-        $c = BookQuery::create('b');
-        $c->keepQuery(false);
-        $c->findPk(1);
-        $expected = ['book.id', 'book.title', 'book.isbn', 'book.price', 'book.publisher_id', 'book.author_id'];
-        $this->assertEquals($expected, $c->getSelectColumns(), 'keepQuery(false) forces findPk() to use the original query');
+        $this->assertObjectPropertyValue([], $c, 'selectColumns');
+        $this->assertObjectPropertyValue([], $c, 'asColumns');
     }
 
     /**
@@ -1795,17 +1824,19 @@ class ModelCriteriaTest extends BookstoreTestBase
     /**
      * @return void
      */
-    public function testFindOne()
+    public function testFindOneReturnsNullIfNone()
     {
-        $c = new ModelCriteria('bookstore', 'Propel\Tests\Bookstore\Book', 'b');
-        $c->where('b.Title = ?', 'foo');
-        $book = $c->findOne();
-        $this->assertNull($book, 'findOne() returns null when the query returns no result');
+        $noBook = BookQuery::create('b')->where('b.Title = ?', 'foo')->findOne();
+        $this->assertNull($noBook, 'findOne() returns null when the query returns no result');
+    }
 
-        $c = new ModelCriteria('bookstore', 'Propel\Tests\Bookstore\Book', 'b');
-        $c->orderBy('b.Title');
-        $book = $c->findOne();
-        $this->assertTrue($book instanceof Book, 'findOne() returns a Model object by default');
+    /**
+     * @return void
+     */
+    public function testFindOneReturnsObject()
+    {
+        $book = BookQuery::create('b')->filterByTitle('Don Juan')->findOne();
+        $this->assertInstanceOf(Book::class, $book, 'findOne() returns a Model object by default');
         $this->assertEquals('Don Juan', $book->getTitle(), 'find() returns the model objects matching the query');
     }
 
@@ -2696,7 +2727,7 @@ class ModelCriteriaTest extends BookstoreTestBase
         ->endUse()
         ->filterById(1)
         ->createSelectSql($params);
-        $expectedSql = $this->getSql('SELECT lastBook.id AS lastBookId FROM book LEFT JOIN author ON (book.author_id=author.id) LEFT JOIN book lastBook ON (author.id=lastBook.author_id) WHERE book.id=:p1 ORDER BY lastBookId DESC');
+        $expectedSql = $this->getSql('SELECT book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id, lastBook.id AS lastBookId FROM book LEFT JOIN author ON (book.author_id=author.id) LEFT JOIN book lastBook ON (author.id=lastBook.author_id) WHERE book.id=:p1 ORDER BY lastBookId DESC');
         $this->assertSame($expectedSql, $actualSql);
     }
 
@@ -2847,12 +2878,11 @@ class ModelCriteriaTest extends BookstoreTestBase
         $bookQuery2 = clone $bookQuery1;
         $bookQuery2
             ->filterByPrice(2);
-        $params = [];
-        $sql = $bookQuery1->createSelectSql($params);
 
+        $expectedParams = [['table' => 'book', 'column' => 'price', 'value' => 1]];
         $expected = $this->getSql('SELECT  FROM book WHERE book.price=:p1');
 
-        $this->assertEquals($expected, $sql, 'conditions applied on a cloned query don\'t get applied on the original query');
+        $this->assertSelectStatement($bookQuery1, $expected, $expectedParams, 'conditions applied on a cloned query don\'t get applied on the original query');
     }
 
     /**

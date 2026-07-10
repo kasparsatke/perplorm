@@ -261,8 +261,9 @@ EOF;
 
     public static function queryStructureDataProvider(): array
     {
+        $columns = 'complex_column_type_entity_11.id, complex_column_type_entity_11.tags, complex_column_type_entity_11.value_set';
         $t = 'complex_column_type_entity_11';
-        $sf = "SELECT  FROM $t WHERE $t.id=:p1";
+        $sf = "SELECT $columns FROM $t WHERE $t.id=:p1";
 
         return [
             [Criteria::CONTAINS_ALL, "$sf AND ($t.tags LIKE :p2 AND $t.tags LIKE :p3)"],

@@ -7,13 +7,10 @@ namespace Propel\Runtime\Formatter;
 use Propel\Runtime\ActiveRecord\ActiveRecordInterface;
 use Propel\Runtime\DataFetcher\DataFetcherInterface;
 use Propel\Runtime\Exception\LogicException;
-use function array_keys;
 use function count;
 use function str_replace;
 
 /**
- * @deprecated class is not type-safe.
- *
  * Array formatter for Propel select query
  * format() returns a ArrayCollection of associative arrays, a string,
  * or an array
@@ -129,7 +126,7 @@ class SimpleArrayFormatter extends AbstractFormatter
      */
     public function getStructuredArrayFromRow(array $row)
     {
-        $columnNames = array_keys($this->getAsColumns());
+        $columnNames = $this->getColumnNames();
         if (count($columnNames) <= 1 || count($row) <= 1) {
             return $row[0];
         }

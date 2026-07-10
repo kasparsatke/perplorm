@@ -156,8 +156,8 @@ class OnDemandFormatter extends ObjectFormatter
             $hydrationChain[$relationPopulator->getRightPhpName()] = $relatedObject;
             $relationPopulator->addModelToTarget($relatedObject, $targetObject);
         }
-        foreach ($this->getAsColumns() as $alias => $clause) {
-            $mainObject->setVirtualColumn($alias, $row[$currentColumnIndex]);
+        foreach ($this->virtualColumnNames as $columnName) {
+            $mainObject->setVirtualColumn($columnName, $row[$currentColumnIndex]);
             $currentColumnIndex++;
         }
 

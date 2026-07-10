@@ -116,7 +116,6 @@ class MysqlAdapterTest extends TestCaseFixtures
         $c->addSelectColumn(BookTableMap::COL_ID);
         $c->lockForShare();
 
-        $params = [];
         $result = $c->createSelectSql($params);
 
         $expected = 'SELECT book.id FROM book LOCK IN SHARE MODE';
@@ -137,7 +136,6 @@ class MysqlAdapterTest extends TestCaseFixtures
         $c->addSelectColumn(BookTableMap::COL_ID);
         $c->lockForUpdate([BookTableMap::TABLE_NAME], true);
 
-        $params = [];
         $result = $c->createSelectSql($params);
 
         $expected = 'SELECT book.id FROM book FOR UPDATE';
@@ -165,7 +163,6 @@ class MysqlAdapterTest extends TestCaseFixtures
 
         $expectedSql ='SELECT subCriteriaAlias.id FROM (SELECT book.id FROM book LOCK IN SHARE MODE) AS subCriteriaAlias LOCK IN SHARE MODE';
 
-        $params = [];
         $generatedSql = $query->createSelectSql($params);
         $this->assertSame($expectedSql, $generatedSql, 'Subquery should contain shared read lock');
     }

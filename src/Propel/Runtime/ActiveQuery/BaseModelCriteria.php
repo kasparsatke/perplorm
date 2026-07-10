@@ -6,17 +6,22 @@ namespace Propel\Runtime\ActiveQuery;
 
 use ArrayIterator;
 use IteratorAggregate;
+use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\UnresolvedColumnExpression;
 use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnResolver;
+use Propel\Runtime\ActiveQuery\ColumnResolver\NormalizedFilterExpression;
 use Propel\Runtime\ActiveQuery\Exception\UnknownModelException;
 use Propel\Runtime\Exception\InvalidArgumentException;
 use Propel\Runtime\Exception\LogicException;
 use Propel\Runtime\Exception\PropelException;
 use Propel\Runtime\Formatter\AbstractFormatter;
+use Propel\Runtime\Formatter\SimpleArrayFormatter;
 use Propel\Runtime\Map\TableMap;
 use Propel\Runtime\Perpl;
 use Traversable;
 use function array_find;
 use function array_pop;
+use function array_search;
+use function assert;
 use function class_exists;
 use function explode;
 use function is_array;
@@ -46,19 +51,7 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
 
     protected TableMap|null $tableMap = null;
 
-    /**
-     * User-selected columns.
-     *
-     * Set in {@see static::select()}. Will be added as AS columns in {@see static::setupUserSelectedColumns()}
-     *
-     * @var array<string>|null
-     */
-    protected array|null $userSelectedColumns = null;
-
-    /**
-     * Used to memorize whether we added self-select columns before.
-     */
-    protected bool $isSelfSelected = false;
+    protected bool $expectManualColumnSelection = false;
 
     /**
      * @var \Propel\Runtime\Formatter\AbstractFormatter<array|\Propel\Runtime\ActiveRecord\ActiveRecordInterface, \Propel\Runtime\Collection\Collection<array|\Propel\Runtime\ActiveRecord\ActiveRecordInterface>>|null
@@ -425,6 +418,26 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
     }
 
     /**
+     * @param string $clause
+     * @param bool $hasAccessToOutputColumns If AS columns can be used in the statement (for example in HAVING clauses)
+     *
+     * @return \Propel\Runtime\ActiveQuery\ColumnResolver\NormalizedFilterExpression
+     */
+    #[\Override]
+    public function normalizeFilterExpression(string $clause, bool $hasAccessToOutputColumns = false): NormalizedFilterExpression
+    {
+        $normalizedExpression = parent::normalizeFilterExpression($clause, $hasAccessToOutputColumns);
+        if (!$normalizedExpression->getReplacedColumns()) {
+            $column = $this->columnResolver->resolveColumn($clause, $hasAccessToOutputColumns);
+            if (!$column instanceof UnresolvedColumnExpression) {
+                return new NormalizedFilterExpression($column->getColumnExpressionInQuery(), [$column]);
+            }
+        }
+
+        return $normalizedExpression;
+    }
+
+    /**
      * Returns the class and alias of a string representing a model or a relation
      * e.g. 'Book b' => array('Book', 'b')
      * e.g. 'Book' => array('Book', null)
@@ -495,7 +508,7 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
     #[\Override]
     protected function isEmpty(): bool
     {
-        return parent::isEmpty() && !($this->formatter || $this->modelAlias || $this->relatedModelsToPopulate || $this->userSelectedColumns);
+        return parent::isEmpty() && !($this->formatter || $this->modelAlias || $this->relatedModelsToPopulate);
     }
 
     /**
@@ -509,29 +522,16 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
     {
         $this->relatedModelsToPopulate = [];
         $this->formatter = null;
-        $this->userSelectedColumns = null;
-        $this->isSelfSelected = false;
 
         return parent::clear();
     }
 
     /**
-     * Whether this Criteria has any select columns.
+     * Makes the ModelCriteria return a string, array, or ArrayCollection.
      *
-     * This will include columns added with addAsColumn() method.
+     * Note: Since Perpl 2.10, `select('*')` uses DB field names rather than
+     * namespaced PHP names (i.e. `author.first_name` instead of `Propel\Tests\Bookstore\Author.FirstName`)
      *
-     * @see static::addAsColumn()
-     * @see static::addSelectColumn()
-     *
-     * @return bool
-     */
-    public function hasSelectClause(): bool
-    {
-        return (bool)$this->userSelectedColumns || parent::hasSelectClause();
-    }
-
-    /**
-     * Makes the ModelCriteria return a string, array, or ArrayCollection
      * Examples:
      *   ArticleQuery::create()->select('Name')->find();
      *   => ArrayCollection Object ('Foo', 'Bar')
@@ -560,29 +560,26 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
             throw new PropelException('You must ask for at least one column');
         }
 
-        if ($columnArray === '*') {
-            $columnArray = $this->resolveSelectAll();
+        $this->selectColumns = ($columnArray === '*')
+            ? $this->getTableMapOrFail()::buildLocalTableColumnExpressions($this, $this->modelAlias)
+            : (array)$columnArray;
+
+        if (!$this->formatter) {
+            $this->setFormatter(SimpleArrayFormatter::class);
         }
-        if (!is_array($columnArray)) {
-            $columnArray = [$columnArray];
-        }
-        $this->userSelectedColumns = $columnArray;
-        $this->isSelfSelected = true;
 
         return $this;
     }
 
     /**
-     * @return list<string>
+     * @return $this
      */
-    protected function resolveSelectAll(): array
+    #[\Override]
+    public function clearSelectColumns()
     {
-        $columnArray = [];
-        foreach ($this->getTableMapOrFail()->getColumns() as $columnMap) {
-            $columnArray[] = $this->modelName . '.' . $columnMap->getPhpName();
-        }
+        $this->expectManualColumnSelection = true;
 
-        return $columnArray;
+        return parent::clearSelectColumns();
     }
 
     /**
@@ -590,10 +587,59 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
      *
      * @see select()
      *
-     * @return array<string>|null A list of column names (e.g. array('Title', 'Category.Name', 'c.Content')) or a single column name (e.g. 'Name')
+     * @return array<string|\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression>|null A list of column names (e.g. array('Title', 'Category.Name', 'c.Content')) or a single column name (e.g. 'Name')
      */
     public function getSelect()
     {
-        return $this->userSelectedColumns;
+        return $this->selectColumns ?: null;
+    }
+
+    /**
+     * Get select columns.
+     *
+     * @return array<string|\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression>
+     */
+    #[\Override]
+    public function getSelectColumnsRaw(): array
+    {
+        if ($this->selectColumns || $this->expectManualColumnSelection) { // override model columns
+            return $this->selectColumns;
+        }
+
+        $tableMapClassName = $this->modelTableMapName;
+        assert($tableMapClassName !== null);
+        $mainAlias = ($this->useAliasInSQL) ? $this->modelAlias : null;
+        $selectedColumns = $tableMapClassName::buildLocalTableColumnExpressions($this, $mainAlias);
+
+        foreach ($this->relatedModelsToPopulate as $populator) {
+            $tableMap = $populator->getTableMap();
+            $tableName = $tableMap->getName();
+            $joinedAlias = array_search($tableName, $this->aliases, true) ?: $tableName; // TODO store alias in populator?
+            $relatedModelColumns = $tableMap::buildLocalTableColumnExpressions($this, (string)$joinedAlias);
+
+            $selectedColumns = [...$selectedColumns, ...$relatedModelColumns];
+        }
+
+        return $selectedColumns;
+    }
+
+    /**
+     * Get the column aliases.
+                 *
+     * @return array<string, string> An assoc array which map the column alias names
+     *               to the alias clauses.
+     */
+    #[\Override]
+    public function getAsColumns(): array
+    {
+        $asColumns = $this->asColumns;
+
+        foreach ($this->subqueries as $subqueryAlias => $subQuery) {
+            foreach ($subQuery->getAsColumns() as $columnAlias => $_) {
+                $asColumns[$columnAlias] = "$subqueryAlias.$columnAlias"; // passes $columnAlias through nested subqueries, but requires unique alias throughout chain
+            }
+        }
+
+        return $asColumns;
     }
 }

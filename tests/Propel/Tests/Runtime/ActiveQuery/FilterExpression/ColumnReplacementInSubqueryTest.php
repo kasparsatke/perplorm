@@ -52,7 +52,8 @@ class ColumnReplacementInSubqueryTest extends TestCaseFixtures
         $subquery = AuthorQuery::create('aut')
             ->setModelAlias('aut', true)
             ->joinEssayRelatedByFirstAuthorId('ess')
-            ->addAsColumn('MyAsColumn', 'author.id') // should be aut.id?
+            ->clearSelectColumns() // disables auto-select
+            ->addAsColumn('MyAsColumn', 'author.id') // same as aut.id
         ;
         $query = BookQuery::create('bok')
             ->select('id')
@@ -61,7 +62,7 @@ class ColumnReplacementInSubqueryTest extends TestCaseFixtures
             ->where($inputClause, $value)
         ;
 
-        $expectedSql =  'SELECT book.id AS "id" '.
+        $expectedSql =  'SELECT book.id, saut.id, saut.first_name, saut.last_name, saut.email, saut.age, saut.MyAsColumn AS MyAsColumn '.
                         'FROM book, ' .
                         '(' .
                             'SELECT aut.id AS MyAsColumn ' . 
@@ -124,10 +125,11 @@ class ColumnReplacementInSubqueryTest extends TestCaseFixtures
      */
     public function testReplaceMainQueryColumnsInFilterSubquery()
     {
-        $subquery = AuthorQuery::create('a')->where('b.AuthorId = a.FirstName');
-        $c = BookQuery::create('b')->add(null, $subquery, '<');
+        $subquery = AuthorQuery::create('a')->where('b.AuthorId = a.FirstName')->select('1');
+        $c = BookQuery::create('b')->addAnd(null, $subquery, '<');
 
-        $expectedSql = "SELECT  FROM book WHERE < (SELECT  FROM author WHERE book.author_id = author.first_name)";
+        $columns = 'book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id';
+        $expectedSql = "SELECT $columns FROM book WHERE < (SELECT 1 FROM author WHERE book.author_id = author.first_name)";
 
         $params = [];
         $this->assertCriteriaTranslation($c, $expectedSql, $params);
@@ -138,12 +140,12 @@ class ColumnReplacementInSubqueryTest extends TestCaseFixtures
      */
     public function testReplaceJoinQueryColumnsInFilterSubquery()
     {
-        $subquery = AuthorQuery::create('a')->where('r.ReviewedBy = a.FirstName');
+        $subquery = AuthorQuery::create('a')->where('r.ReviewedBy = a.FirstName')->select('1');
         $c = BookQuery::create('b')
             ->joinReview('r')
-            ->add(null, $subquery, '>');
+            ->addAnd(null, $subquery, '>');
 
-        $expectedSql = "SELECT  FROM book LEFT JOIN review r ON (book.id=r.book_id) WHERE > (SELECT  FROM author WHERE r.reviewed_by = author.first_name)";
+        $expectedSql = "SELECT book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id FROM book LEFT JOIN review r ON (book.id=r.book_id) WHERE > (SELECT 1 FROM author WHERE r.reviewed_by = author.first_name)";
 
         $params = [];
         $this->assertCriteriaTranslation($c, $expectedSql, $params, '');
@@ -157,18 +159,19 @@ class ColumnReplacementInSubqueryTest extends TestCaseFixtures
         // access a column in subquery that was added through a join in a subcriteria (useQuery)
         // book <-> author <-> essay
         //  ^-> review
-        $subquery = ReviewQuery::create('rev')->where('rev.ReviewedBy = ess.SecondAuthorId');
+        $subquery = ReviewQuery::create('rev')->where('rev.ReviewedBy = ess.SecondAuthorId')->select('1');
         $c = BookQuery::create('bok')
             ->useAuthorQuery('aut')
                 ->joinEssayRelatedByFirstAuthorId('ess')
             ->endUse()
-            ->add(null, $subquery, '<');
+            ->addAnd(null, $subquery, '<');
 
-        $expectedSql =  'SELECT  FROM book ' .
+        $expectedSql =  'SELECT book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id '.
+                        'FROM book ' .
                         'LEFT JOIN author aut ON (book.author_id=aut.id) ' .
                         'LEFT JOIN essay ess ON (aut.id=ess.first_author_id) '.
                         'WHERE < (' .
-                            'SELECT  ' . 
+                            'SELECT 1 ' . 
                             'FROM review '.
                             'WHERE review.reviewed_by = ess.second_author_id'.
                         ')';

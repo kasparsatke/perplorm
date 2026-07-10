@@ -100,7 +100,6 @@ class SubQueryTest extends BookstoreTestBase
     public function testSubQueryWithoutAlias()
     {
         $subCriteria = new BookQuery();
-        $subCriteria->addModelColumns();
 
         $c = new BookQuery();
         $c->addSubquery($subCriteria); // no alias
@@ -139,18 +138,18 @@ class SubQueryTest extends BookstoreTestBase
      */
     public function testSubQueryWithoutAliasSeveral()
     {
-        $c1 = new BookQuery();
-        $c1->filterByPrice(10, Criteria::GREATER_THAN);
+        $c1 = BookQuery::create()->filterByPrice(10, Criteria::GREATER_THAN);
+        $c2 = BookQuery::create()->filterByPrice(20, Criteria::LESS_THAN);
 
-        $c2 = new BookQuery();
-        $c2->filterByPrice(20, Criteria::LESS_THAN);
+        $c3 = BookQuery::create()
+            ->addSubquery($c1) // no alias
+            ->addSubquery($c2) // no alias
+            ->filterByTitle('War%', Criteria::LIKE);
 
-        $c3 = new BookQuery();
-        $c3->addSubquery($c1); // no alias
-        $c3->addSubquery($c2); // no alias
-        $c3->filterByTitle('War%', Criteria::LIKE);
-
-        $sql = $this->getSql('SELECT subquery_1.id, subquery_1.title, subquery_1.isbn, subquery_1.price, subquery_1.publisher_id, subquery_1.author_id, subquery_2.id, subquery_2.title, subquery_2.isbn, subquery_2.price, subquery_2.publisher_id, subquery_2.author_id FROM (SELECT book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id FROM book WHERE book.price>:p2) AS subquery_1, (SELECT book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id FROM book WHERE book.price<:p3) AS subquery_2 WHERE subquery_2.title LIKE :p1');
+        $subquery1Columns = 'subquery_1.id, subquery_1.title, subquery_1.isbn, subquery_1.price, subquery_1.publisher_id, subquery_1.author_id';
+        $subquery2Columns = 'subquery_2.id, subquery_2.title, subquery_2.isbn, subquery_2.price, subquery_2.publisher_id, subquery_2.author_id';
+        $bookColumns = 'book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id';
+        $sql = $this->getSql("SELECT $subquery1Columns, $subquery2Columns FROM (SELECT $bookColumns FROM book WHERE book.price>:p2) AS subquery_1, (SELECT $bookColumns FROM book WHERE book.price<:p3) AS subquery_2 WHERE subquery_2.title LIKE :p1");
 
         $params = [
             ['table' => 'book', 'column' => 'title', 'value' => 'War%'],
@@ -260,7 +259,6 @@ class SubQueryTest extends BookstoreTestBase
     {
         // sort the books (on date, if equal continue with id), filtered by a publisher
         $sortedBookQuery = new BookQuery();
-        $sortedBookQuery->addModelColumns();
         $sortedBookQuery->filterByPublisherId(123);
         $sortedBookQuery->orderByTitle(Criteria::DESC);
         $sortedBookQuery->orderById(Criteria::DESC);
@@ -309,7 +307,6 @@ class SubQueryTest extends BookstoreTestBase
         $c->addSubquery($subCriteria, 'alias1', false);
         $c->select(['alias1.Id']);
         $c->setAutoAddTable(false);
-        $c->setupUserSelectedColumns();
 
         $sql = $this->getSql('SELECT alias1.id AS "alias1.Id" FROM (SELECT book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id FROM book) AS alias1');
 
@@ -349,9 +346,8 @@ CASE WHEN EXISTS(
 )
 THEN 1 ELSE 0 END
 EOF;
-        $p = [];
         $actual = BookQuery::create()->select('id')->addAsColumn('hasAuthor', $colDef)->createSelectSql($p);
-        $expected = "SELECT $colDef AS hasAuthor, book.id AS \"id\" FROM book";
+        $expected = "SELECT book.id, $colDef AS hasAuthor FROM book";
         $this->assertEquals($this->getSql($expected), $actual);
     }
 
@@ -368,9 +364,9 @@ EXISTS(
 )
 THEN 1 ELSE 0 END
 EOF;
-        $p = [];
+        $columns = 'book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id';
+        $expected = "SELECT $columns FROM book WHERE $where";
         $actual = BookQuery::create()->where($where)->createSelectSql($p);
-        $expected = "SELECT  FROM book WHERE $where";
         $this->assertEquals($this->getSql($expected), $actual);
     }
 }

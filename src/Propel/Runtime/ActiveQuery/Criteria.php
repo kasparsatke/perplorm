@@ -1474,7 +1474,7 @@ class Criteria
      */
     public function getSelectColumns(): array
     {
-        return array_map(fn ($col) => $col instanceof AbstractColumnExpression ? $col->getColumnExpressionInQuery() : $col, $this->selectColumns);
+        return array_map(fn ($col) => $col instanceof AbstractColumnExpression ? $col->getColumnExpressionInQuery() : $col, $this->getSelectColumnsRaw());
     }
 
     /**
@@ -1616,8 +1616,7 @@ class Criteria
     {
         $sb = 'Criteria:';
         try {
-            $params = [];
-            $sb .= "\nSQL (may not be complete): " . $this->createSelectSql($params);
+            $sb .= "\nSQL: " . $this->createSelectSql($params);
 
             $sb .= "\nParams: ";
             $paramstr = [];
@@ -1757,14 +1756,14 @@ class Criteria
         }
 
         // merge select columns
-        $this->selectColumns = array_merge($this->getSelectColumnsRaw(), $criteria->getSelectColumnsRaw());
+        $this->selectColumns = array_merge($this->selectColumns, $criteria->selectColumns);
 
         // merge as columns
-        $commonAsColumns = array_intersect_key($this->getAsColumns(), $criteria->getAsColumns());
+        $commonAsColumns = array_intersect_key($this->asColumns, $criteria->asColumns);
         if ($commonAsColumns) {
             throw new LogicException('The given criteria contains an AsColumn with an alias already existing in the current object');
         }
-        $this->asColumns = array_merge($this->getAsColumns(), $criteria->getAsColumns());
+        $this->asColumns = array_merge($this->asColumns, $criteria->asColumns);
 
         // merge orderByColumns
         $orderByColumns = array_merge($this->getOrderByColumns(), $criteria->getOrderByColumns());
@@ -2033,12 +2032,15 @@ class Criteria
      * to be set before the statement is executed. The reason we do it this way
      * is to let the PDO layer handle all escaping & value formatting.
      *
-     * @param array $params Parameters that are to be replaced in prepared statement.
+     * @param-out array $params
+     *
+     * @param array|null $params Parameters that are to be replaced in prepared statement.
      *
      * @return string
      */
-    public function createSelectSql(array &$params): string
+    public function createSelectSql(array|null &$params = null): string
     {
+        $params ??= [];
         $preparedStatementDto = SelectQuerySqlBuilder::createSelectSql($this, $params);
         $params = $preparedStatementDto->getParameters();
 
