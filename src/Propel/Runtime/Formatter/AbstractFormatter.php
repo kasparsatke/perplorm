@@ -6,11 +6,13 @@ namespace Propel\Runtime\Formatter;
 
 use LogicException;
 use Propel\Runtime\ActiveQuery\BaseModelCriteria;
+use Propel\Runtime\ActiveQuery\RelationPopulator;
 use Propel\Runtime\ActiveRecord\ActiveRecordInterface;
 use Propel\Runtime\DataFetcher\DataFetcherInterface;
 use Propel\Runtime\Exception\PropelException;
 use Propel\Runtime\Map\TableMap;
 use Propel\Runtime\Perpl;
+use function array_any;
 
 /**
  * Abstract class for query formatter
@@ -38,9 +40,9 @@ abstract class AbstractFormatter
     protected $tableMap;
 
     /**
-     * @var array<\Propel\Runtime\ActiveQuery\ModelWith>
+     * @var array<\Propel\Runtime\ActiveQuery\RelationPopulator>
      */
-    protected $with = [];
+    protected $relatedModelsToPopulate = [];
 
     /**
      * @var array<string, string>
@@ -115,7 +117,7 @@ abstract class AbstractFormatter
             throw new LogicException('Cannot initialize formatter on a criteria without model class name (`modelName`)');
         }
         $this->setClass($modelClassName);
-        $this->setWith($criteria->getWith());
+        $this->setRelatedModelsToPopulate($criteria->getRelatedModelsToPopulate());
         $this->asColumns = $criteria->getAsColumns();
         $this->hasLimit = $criteria->getLimit() != -1;
         if ($dataFetcher) {
@@ -171,17 +173,39 @@ abstract class AbstractFormatter
      *
      * @return void
      */
-    public function setWith(array $withs = []): void
+    public function setRelatedModelsToPopulate(array $withs = []): void
     {
-        $this->with = $withs;
+        $this->relatedModelsToPopulate = $withs;
     }
 
     /**
-     * @return array<\Propel\Runtime\ActiveQuery\ModelWith>
+     * @return array<\Propel\Runtime\ActiveQuery\RelationPopulator>
+     */
+    public function getRelatedModelsToPopulate(): array
+    {
+        return $this->relatedModelsToPopulate;
+    }
+
+    /**
+     * @deprecated Use aptly named {static::setRelatedModelsToPopulate()}
+     *
+     * @param array $withs
+     *
+     * @return void
+     */
+    public function setWith(array $withs = []): void
+    {
+        $this->relatedModelsToPopulate = $withs;
+    }
+
+    /**
+     * @deprecated Use aptly named {static::getRelatedModelsToPopulate()}
+     *
+     * @return array<\Propel\Runtime\ActiveQuery\RelationPopulator>
      */
     public function getWith(): array
     {
-        return $this->with;
+        return $this->relatedModelsToPopulate;
     }
 
     /**
@@ -304,15 +328,9 @@ abstract class AbstractFormatter
     /**
      * @return bool
      */
-    protected function isWithOneToMany(): bool
+    protected function populatesListOnTarget(): bool
     {
-        foreach ($this->with as $modelWith) {
-            if ($modelWith->isWithOneToMany()) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_any($this->relatedModelsToPopulate, fn (RelationPopulator $p) => $p->populatesListOnTarget());
     }
 
     /**
