@@ -317,7 +317,7 @@ class ModelCriteria extends BaseModelCriteria
      *    => $c->addGroupByColumn(BookTableMap::AUTHOR_ID)
      *    => $c->addGroupByColumn(BookTableMap::AUTHOR_NAME)
      *
-     * @param mixed $columnNames an array of columns name (e.g. array('Book.AuthorId', 'Book.AuthorName')) or a single column name (e.g. 'Book.AuthorId')
+     * @param \Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression|array<string|\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression>|string $columnNames an array of columns name (e.g. array('Book.AuthorId', 'Book.AuthorName')) or a single column name (e.g. 'Book.AuthorId')
      *
      * @throws \Propel\Runtime\Exception\PropelException
      *
@@ -329,9 +329,12 @@ class ModelCriteria extends BaseModelCriteria
             throw new PropelException('You must ask for at least one column');
         }
 
+        if ($columnNames instanceof AbstractColumnExpression) {
+            $this->addGroupByColumn($columnNames);
+        } else {
         foreach ((array)$columnNames as $columnName) {
-            $localColumnName = $this->columnResolver->resolveColumn($columnName, true, false)->getColumnExpressionInQuery();
-            $this->addGroupByColumn($localColumnName);
+                $this->addGroupByColumn($columnName);
+            }
         }
 
         return $this;

@@ -31,6 +31,8 @@ class TestCase extends PHPUnitTestCase
     }
 
     /**
+     * @deprecated Use aptly named {@see static::toVendorSql}
+     *
      * Makes the sql compatible with the current database.
      * Means: replaces ` etc.
      *
@@ -41,6 +43,21 @@ class TestCase extends PHPUnitTestCase
      * @return mixed
      */
     protected static function getSql($sql, $source = 'mysql', $target = null)
+    {
+        return static::toVendorSql($sql, $source, $target);
+    }
+
+    /**
+     * Makes the sql compatible with the current database.
+     * Means: replaces ` etc.
+     *
+     * @param string $sql
+     * @param string $source
+     * @param string|null $target
+     *
+     * @return mixed
+     */
+    protected static function toVendorSql($sql, $source = 'mysql', $target = null)
     {
         $target ??= static::getDriver();
 

@@ -71,7 +71,7 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
 
         $groupBy = $this->adapter->getGroupBy($this->criteria);
         if ($groupBy) {
-            $sqlClauses[] = $this->criteria->replaceColumnNames($groupBy);
+            $sqlClauses[] = $groupBy;
         }
 
         $havingSql = $this->buildHavingClause($params);

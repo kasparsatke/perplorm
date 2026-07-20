@@ -178,11 +178,12 @@ class QuotingTest extends TestCaseFixturesDatabase
         ->having('group.As > 0')
         ->find($con);
 
-        if ($this->runningOnPostgreSQL()) {
-            $expected = $this->getSql('SELECT `group`.`id`, `group`.`title`, `group`.`by`, `group`.`as`, `group`.`author_id` FROM `group` GROUP BY `group`.`as`,`group`.`id`,`group`.`title`,`group`.`by`,`group`.`author_id` HAVING `group`.`as` > 0');
-        } else {
-            $expected = $this->getSql('SELECT `group`.`id`, `group`.`title`, `group`.`by`, `group`.`as`, `group`.`author_id` FROM `group` GROUP BY `group`.`as` HAVING `group`.`as` > 0');
-        }
+        $groupBy = $this->runningOnPostgreSQL()
+            ? '`group`.`as`,`group`.`id`,`group`.`title`,`group`.`by`,`group`.`author_id`'
+            : '`group`.`as`';
+    
+        $expected = static::toVendorSql("SELECT `group`.`id`, `group`.`title`, `group`.`by`, `group`.`as`, `group`.`author_id` FROM `group` GROUP BY $groupBy HAVING `group`.`as` > 0");
+
         $this->assertEquals($expected, $this->getLastQuery());
     }
 }

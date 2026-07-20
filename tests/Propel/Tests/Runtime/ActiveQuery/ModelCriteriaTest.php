@@ -722,9 +722,11 @@ class ModelCriteriaTest extends BookstoreTestBase
      */
     public function testGroupByUnknownColumnError()
     {
-        $c = BookQuery::create()->groupBy('Propel\Tests\Bookstore\Book.AuthorId');
+        $c = BookQuery::create()
+            ->groupBy('Book.Foo');
+
         $this->expectException(UnknownColumnException::class);
-        $c->groupBy('Book.Foo');
+        $c->createSelectSql($params);
     }
 
     /**
