@@ -65,6 +65,8 @@ END;
 
     public static function dataLimit()
     {
+        $columns = 'issue_1463_item.id, issue_1463_item.name';
+
         return [
 
             /*
@@ -73,34 +75,34 @@ END;
 
             'Zero' => [
                 'limit' => 0,
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 0',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 0",
             ],
 
             'Small integer' => [
                 'limit' => 38427,
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 38427',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 38427",
             ],
             'Small integer as a string' => [
                 'limit' => '38427',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 38427',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 38427",
             ],
 
             'Large integer' => [
                 'limit' => 9223372036854775807,
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 9223372036854775807',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 9223372036854775807",
             ],
             'Large integer as a string' => [
                 'limit' => '9223372036854775807',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 9223372036854775807',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 9223372036854775807",
             ],
 
             'Decimal value' => [
                 'limit' => 123.9,
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 123',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 123",
             ],
             'Decimal value as a string' => [
                 'limit' => '123.9',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 123',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 123",
             ],
 
             /*
@@ -109,15 +111,15 @@ END;
 
             'Negative value' => [
                 'limit' => -1,
-                'expectedSql' => 'SELECT  FROM issue_1463_item',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item",
             ],
             'Non-numeric string' => [
                 'limit' => 'foo',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 0',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 0",
             ],
             'Injected SQL' => [
                 'limit' => '3;DROP TABLE abc',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 3',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 3",
             ],
         ];
     }
@@ -141,6 +143,8 @@ END;
 
     public static function dataOffset()
     {
+        $columns = 'issue_1463_item.id, issue_1463_item.name';
+
         return [
 
             /*
@@ -149,34 +153,34 @@ END;
 
             'Zero' => [
                 'offset' => 0,
-                'expectedSql' => 'SELECT  FROM issue_1463_item',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item",
             ],
 
             'Small integer' => [
                 'offset' => 38427,
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 38427, 18446744073709551615',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 38427, 18446744073709551615",
             ],
             'Small integer as a string' => [
                 'offset' => '38427',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 38427, 18446744073709551615',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 38427, 18446744073709551615",
             ],
 
             'Large integer' => [
                 'offset' => 9223372036854775807,
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 9223372036854775807, 18446744073709551615',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 9223372036854775807, 18446744073709551615",
             ],
             'Large integer as a string' => [
                 'offset' => '9223372036854775807',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 9223372036854775807, 18446744073709551615',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 9223372036854775807, 18446744073709551615",
             ],
 
             'Decimal value' => [
                 'offset' => 123.9,
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 123, 18446744073709551615',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 123, 18446744073709551615",
             ],
             'Decimal value as a string' => [
                 'offset' => '123.9',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 123, 18446744073709551615',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 123, 18446744073709551615",
             ],
 
             /*
@@ -185,15 +189,15 @@ END;
 
             'Negative value' => [
                 'offset' => -1,
-                'expectedSql' => 'SELECT  FROM issue_1463_item',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item",
             ],
             'Non-numeric string' => [
                 'offset' => 'foo',
-                'expectedSql' => 'SELECT  FROM issue_1463_item',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item",
             ],
             'Injected SQL' => [
                 'offset' => '3;DROP TABLE abc',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 3, 18446744073709551615',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 3, 18446744073709551615",
             ],
         ];
     }
@@ -217,42 +221,43 @@ END;
 
     public static function dataOffsetAndLimit()
     {
-        return [
+        $columns = 'issue_1463_item.id, issue_1463_item.name';
 
+        return [
             /*
                 Valid offsets
              */
 
             'Zero' => [
                 'offset' => 0,
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 999',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 999",
             ],
 
             'Small integer' => [
                 'offset' => 38427,
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 38427, 999',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 38427, 999",
             ],
             'Small integer as a string' => [
                 'offset' => '38427',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 38427, 999',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 38427, 999",
             ],
 
             'Large integer' => [
                 'offset' => 9223372036854775807,
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 9223372036854775807, 999',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 9223372036854775807, 999",
             ],
             'Large integer as a string' => [
                 'offset' => '9223372036854775807',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 9223372036854775807, 999',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 9223372036854775807, 999",
             ],
 
             'Decimal value' => [
                 'offset' => 123.9,
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 123, 999',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 123, 999",
             ],
             'Decimal value as a string' => [
                 'offset' => '123.9',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 123, 999',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 123, 999",
             ],
 
             /*
@@ -261,15 +266,15 @@ END;
 
             'Negative value' => [
                 'offset' => -1,
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 999',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 999",
             ],
             'Non-numeric string' => [
                 'offset' => 'foo',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 999',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 999",
             ],
             'Injected SQL' => [
                 'offset' => '3;DROP TABLE abc',
-                'expectedSql' => 'SELECT  FROM issue_1463_item LIMIT 3, 999',
+                'expectedSql' => "SELECT $columns FROM issue_1463_item LIMIT 3, 999",
             ],
         ];
     }

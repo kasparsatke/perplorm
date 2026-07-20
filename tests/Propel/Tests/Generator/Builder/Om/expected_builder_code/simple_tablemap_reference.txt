@@ -14,6 +14,7 @@ use Propel\Runtime\Exception\PropelException;
 use Propel\Runtime\Map\TableMap;
 use Propel\Runtime\Map\TableMapTrait;
 use Propel\Runtime\Perpl;
+use function array_map;
 use function assert;
 use function is_array;
 use function is_object;
@@ -376,6 +377,26 @@ class IdTableTableMap extends TableMap
     }
 
     /**
+     * Get Table columns as ColumnExpressionObjects.
+     *
+     * Note: Excludes lazy-loaded columns.
+     *
+     * @param \Propel\Runtime\ActiveQuery\Criteria $criteria
+     * @param string|null $tableNameInQuery
+     *
+     * @return array<\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\LocalColumnExpression>
+     */
+    public static function buildLocalTableColumnExpressions(Criteria $criteria, string|null $tableNameInQuery = null): array
+    {
+        $tableMap = static::getTableMap();
+        $tableNameInQuery ??= 'id_table';
+
+        return [
+            new LocalColumnExpression($criteria, $tableNameInQuery, $tableMap->columns['ID']),
+        ];
+    }
+
+    /**
      * Add all the columns needed to create a new object.
      *
      * Note: any columns that were marked with lazyLoad="true" in the
@@ -389,9 +410,8 @@ class IdTableTableMap extends TableMap
      */
     public static function addSelectColumns(Criteria $criteria, ?string $alias = null): void
     {
-        $tableMap = static::getTableMap();
-        $tableAlias = $alias ?: 'id_table';
-        $criteria->addSelectColumn(new LocalColumnExpression($criteria, $tableAlias, $tableMap->columns['ID']));
+        $columnExpressions = static::buildLocalTableColumnExpressions($criteria, $alias ?: 'id_table');
+        array_map([$criteria, 'addSelectColumn'], $columnExpressions);
     }
 
     /**

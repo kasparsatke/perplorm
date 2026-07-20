@@ -267,11 +267,11 @@
   </file>
   <file src="src/Propel/Runtime/Formatter/AbstractFormatterWithHydration.php">
     <NonVariableReferenceReturn>
-      <code><![CDATA[$this->alreadyHydratedObjects[$this->class][$mainKey]]]></code>
+      <code><![CDATA[$this->localTuplePool[$this->class][$mainKey]]]></code>
     </NonVariableReferenceReturn>
     <UnsupportedPropertyReferenceUsage>
-      <code><![CDATA[$arrayToAugment = &$this->alreadyHydratedObjects[$this->class][$mainKey]]]></code>
-      <code><![CDATA[$arrayToAugment[$relationName] = &$this->alreadyHydratedObjects[$relationAlias][$key]]]></code>
+      <code><![CDATA[$parentTuple = &$this->localTuplePool[$this->class][$mainKey]]]></code>
+      <code><![CDATA[$relatedTuple = &$this->localTuplePool[$relationAlias][$key]]]></code>
     </UnsupportedPropertyReferenceUsage>
   </file>
   <file src="src/Propel/Runtime/Formatter/ObjectFormatter.php">

@@ -6,16 +6,22 @@ namespace Propel\Runtime\ActiveQuery;
 
 use ArrayIterator;
 use IteratorAggregate;
+use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\UnresolvedColumnExpression;
 use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnResolver;
+use Propel\Runtime\ActiveQuery\ColumnResolver\NormalizedFilterExpression;
 use Propel\Runtime\ActiveQuery\Exception\UnknownModelException;
 use Propel\Runtime\Exception\InvalidArgumentException;
 use Propel\Runtime\Exception\LogicException;
+use Propel\Runtime\Exception\PropelException;
 use Propel\Runtime\Formatter\AbstractFormatter;
+use Propel\Runtime\Formatter\SimpleArrayFormatter;
 use Propel\Runtime\Map\TableMap;
 use Propel\Runtime\Perpl;
 use Traversable;
 use function array_find;
 use function array_pop;
+use function array_search;
+use function assert;
 use function class_exists;
 use function explode;
 use function is_array;
@@ -44,6 +50,8 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
     protected string|null $modelAlias = null;
 
     protected TableMap|null $tableMap = null;
+
+    protected bool $expectManualColumnSelection = false;
 
     /**
      * @var \Propel\Runtime\Formatter\AbstractFormatter<array|\Propel\Runtime\ActiveRecord\ActiveRecordInterface, \Propel\Runtime\Collection\Collection<array|\Propel\Runtime\ActiveRecord\ActiveRecordInterface>>|null
@@ -410,6 +418,26 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
     }
 
     /**
+     * @param string $clause
+     * @param bool $hasAccessToOutputColumns If AS columns can be used in the statement (for example in HAVING clauses)
+     *
+     * @return \Propel\Runtime\ActiveQuery\ColumnResolver\NormalizedFilterExpression
+     */
+    #[\Override]
+    public function normalizeFilterExpression(string $clause, bool $hasAccessToOutputColumns = false): NormalizedFilterExpression
+    {
+        $normalizedExpression = parent::normalizeFilterExpression($clause, $hasAccessToOutputColumns);
+        if (!$normalizedExpression->getReplacedColumns()) {
+            $column = $this->columnResolver->resolveColumn($clause, $hasAccessToOutputColumns);
+            if (!$column instanceof UnresolvedColumnExpression) {
+                return new NormalizedFilterExpression($column->getColumnExpressionInQuery(), [$column]);
+            }
+        }
+
+        return $normalizedExpression;
+    }
+
+    /**
      * Returns the class and alias of a string representing a model or a relation
      * e.g. 'Book b' => array('Book', 'b')
      * e.g. 'Book' => array('Book', null)
@@ -472,5 +500,146 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
         if ($this->formatter !== null) {
             $this->formatter = clone $this->formatter;
         }
+    }
+
+    /**
+     * @return bool
+     */
+    #[\Override]
+    protected function isEmpty(): bool
+    {
+        return parent::isEmpty() && !($this->formatter || $this->modelAlias || $this->relatedModelsToPopulate);
+    }
+
+    /**
+     * Clear the conditions to allow the reuse of the query object.
+     * The ModelCriteria's Model and alias 'all the properties set by construct) will remain.
+     *
+     * @return $this
+     */
+    #[\Override]
+    public function clear()
+    {
+        $this->relatedModelsToPopulate = [];
+        $this->formatter = null;
+
+        return parent::clear();
+    }
+
+    /**
+     * Makes the ModelCriteria return a string, array, or ArrayCollection.
+     *
+     * Note: Since Perpl 2.10, `select('*')` uses DB field names rather than
+     * namespaced PHP names (i.e. `author.first_name` instead of `Propel\Tests\Bookstore\Author.FirstName`)
+     *
+     * Examples:
+     *   ArticleQuery::create()->select('Name')->find();
+     *   => ArrayCollection Object ('Foo', 'Bar')
+     *
+     *   ArticleQuery::create()->select('Name')->findOne();
+     *   => string 'Foo'
+     *
+     *   ArticleQuery::create()->select(array('Id', 'Name'))->find();
+     *   => ArrayCollection Object (
+     *        array('Id' => 1, 'Name' => 'Foo'),
+     *        array('Id' => 2, 'Name' => 'Bar')
+     *      )
+     *
+     *   ArticleQuery::create()->select(array('Id', 'Name'))->findOne();
+     *   => array('Id' => 1, 'Name' => 'Foo')
+     *
+     * @param mixed $columnArray A list of column names (e.g. array('Title', 'Category.Name', 'c.Content')) or a single column name (e.g. 'Name')
+     *
+     * @throws \Propel\Runtime\Exception\PropelException
+     *
+     * @return $this
+     */
+    public function select($columnArray)
+    {
+        if (!$columnArray) {
+            throw new PropelException('You must ask for at least one column');
+        }
+
+        $this->selectColumns = ($columnArray === '*')
+            ? $this->getTableMapOrFail()::buildLocalTableColumnExpressions($this, $this->modelAlias)
+            : (array)$columnArray;
+
+        if (!$this->formatter) {
+            $this->setFormatter(SimpleArrayFormatter::class);
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return $this
+     */
+    #[\Override]
+    public function clearSelectColumns()
+    {
+        $this->expectManualColumnSelection = true;
+
+        return parent::clearSelectColumns();
+    }
+
+    /**
+     * Retrieves the columns defined by a previous call to select().
+     *
+     * @see select()
+     *
+     * @return array<string|\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression>|null A list of column names (e.g. array('Title', 'Category.Name', 'c.Content')) or a single column name (e.g. 'Name')
+     */
+    public function getSelect()
+    {
+        return $this->selectColumns ?: null;
+    }
+
+    /**
+     * Get select columns.
+     *
+     * @return array<string|\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression>
+     */
+    #[\Override]
+    public function getSelectColumnsRaw(): array
+    {
+        if ($this->selectColumns || $this->expectManualColumnSelection) { // override model columns
+            return $this->selectColumns;
+        }
+
+        $tableMapClassName = $this->modelTableMapName;
+        assert($tableMapClassName !== null);
+        $mainAlias = ($this->useAliasInSQL) ? $this->modelAlias : null;
+        $selectedColumns = $tableMapClassName::buildLocalTableColumnExpressions($this, $mainAlias);
+
+        foreach ($this->relatedModelsToPopulate as $populator) {
+            $tableMap = $populator->getTableMap();
+            $tableName = $tableMap->getName();
+            $joinedAlias = array_search($tableName, $this->aliases, true) ?: $tableName; // TODO store alias in populator?
+            $relatedModelColumns = $tableMap::buildLocalTableColumnExpressions($this, (string)$joinedAlias);
+
+            $selectedColumns = [...$selectedColumns, ...$relatedModelColumns];
+        }
+
+        return $selectedColumns;
+    }
+
+    /**
+     * Get the column aliases.
+                 *
+     * @return array<string, string> An assoc array which map the column alias names
+     *               to the alias clauses.
+     */
+    #[\Override]
+    public function getAsColumns(): array
+    {
+        $asColumns = $this->asColumns;
+
+        foreach ($this->subqueries as $subqueryAlias => $subQuery) {
+            foreach ($subQuery->getAsColumns() as $columnAlias => $_) {
+                $asColumns[$columnAlias] = "$subqueryAlias.$columnAlias"; // passes $columnAlias through nested subqueries, but requires unique alias throughout chain
+            }
+        }
+
+        return $asColumns;
     }
 }

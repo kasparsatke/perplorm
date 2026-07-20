@@ -4,9 +4,11 @@ declare(strict_types = 1);
 
 namespace Propel\Runtime\Formatter;
 
+use Propel\Runtime\ActiveQuery\BaseModelCriteria;
 use Propel\Runtime\ActiveRecord\ActiveRecordInterface;
 use Propel\Runtime\DataFetcher\DataFetcherInterface;
 use Propel\Runtime\Exception\LogicException;
+use function array_keys;
 use function serialize;
 
 /**
@@ -22,7 +24,28 @@ class ObjectFormatter extends AbstractFormatter
     /**
      * @var array<string, RowFormat>
      */
-    protected $objects = [];
+    protected array $localInstancePool = [];
+
+    /**
+     * @var array<string>
+     */
+    protected array $virtualColumnNames = [];
+
+    /**
+     * @param \Propel\Runtime\ActiveQuery\BaseModelCriteria $criteria
+     * @param \Propel\Runtime\DataFetcher\DataFetcherInterface|null $dataFetcher
+     *
+     * @return $this The current formatter object
+     */
+    #[\Override]
+    public function init(BaseModelCriteria $criteria, ?DataFetcherInterface $dataFetcher = null)
+    {
+        parent::init($criteria);
+
+        $this->virtualColumnNames = array_keys($criteria->getAsColumns());
+
+        return $this;
+    }
 
     /**
      * @param \Propel\Runtime\DataFetcher\DataFetcherInterface|null $dataFetcher
@@ -59,8 +82,8 @@ class ObjectFormatter extends AbstractFormatter
                 $pk = $object->getPrimaryKey();
                 $serializedPk = serialize($pk);
 
-                if (!isset($this->objects[$serializedPk])) {
-                    $this->objects[$serializedPk] = $object;
+                if (!isset($this->localInstancePool[$serializedPk])) {
+                    $this->localInstancePool[$serializedPk] = $object;
                     $collection[] = $object;
                 }
             }
@@ -130,56 +153,49 @@ class ObjectFormatter extends AbstractFormatter
      */
     public function getAllObjectsFromRow(array $row): ActiveRecordInterface
     {
+        $indexType = $this->getDataFetcher()->getIndexType();
+
         // main object
-        [$mainObject, $col] = $this->getTableMap()->populateObject($row, 0, $this->getDataFetcher()->getIndexType());
+        [$mainObject, $rowOffset] = $this->getTableMap()->populateObject($row, 0, $indexType);
 
         $pk = $mainObject->getPrimaryKey();
         $serializedPk = serialize($pk);
 
-        if (isset($this->objects[$serializedPk])) {
+        if (isset($this->localInstancePool[$serializedPk])) {
             //if instance pooling is disabled, we need to make sure we're working on the correct (already fetched) object
             //so one-to-many relations are correctly loaded.
-            $mainObject = $this->objects[$serializedPk];
+            $mainObject = $this->localInstancePool[$serializedPk];
         }
 
-        /** @var array<string, object> $hydrationChain */
-        $hydrationChain = [];
+        /** @var array<string, object> $hydratedObjectsByPhpName */
+        $hydratedObjectsByPhpName = [];
 
-        // related objects added using with()
-        $indexType = $this->getDataFetcher()->getIndexType();
+        // related objects added using populateRelation()
         foreach ($this->getRelatedModelsToPopulate() as $relationPopulator) {
-            [$relatedObject, $col] = $relationPopulator->getTableMap()->populateObject($row, $col, $indexType);
+            [$relatedObject, $rowOffset] = $relationPopulator->getTableMap()->populateObject($row, $rowOffset, $indexType);
 
-            $leftPhpName = $relationPopulator->getLeftPhpName();
-            if ($leftPhpName && !isset($hydrationChain[$leftPhpName])) {
+            $parentAlias = $relationPopulator->getLeftPhpName();
+
+            if ($parentAlias && !isset($hydratedObjectsByPhpName[$parentAlias])) { // parent object not available (yet), current object probably referenced through parent
                 continue;
             }
 
-            if ($relationPopulator->joinsToMainModel()) {
-                $targetObject = $mainObject;
-            } elseif ($hydrationChain && !empty($hydrationChain[$leftPhpName])) {
-                $targetObject = $hydrationChain[$leftPhpName];
-            } else {
-                continue;
-            }
-
-            // as we may be in a left join, the endObject may be empty
-            // in which case it should not be related to the previous object
-            if ($relatedObject === null || $relatedObject->isPrimaryKeyNull()) {
-                $relationPopulator->initRelationOnTarget($targetObject);
+            $parentObject = $parentAlias === null ? $mainObject : $hydratedObjectsByPhpName[$parentAlias];
+            if (!$relatedObject || $relatedObject->isPrimaryKeyNull()) {
+                $relationPopulator->initRelationOnTarget($parentObject);
 
                 continue;
             }
 
-            $hydrationChain[$relationPopulator->getRightPhpName()] = $relatedObject;
-            $relationPopulator->addModelToTarget($relatedObject, $targetObject);
-            $relationPopulator->resetPartialRelationOnTarget($targetObject);
+            $hydratedObjectsByPhpName[$relationPopulator->getRightPhpName()] = $relatedObject;
+            $relationPopulator->addModelToTarget($relatedObject, $parentObject);
+            $relationPopulator->resetPartialRelationOnTarget($parentObject);
         }
 
         // columns added using withColumn()
-        foreach ($this->getAsColumns() as $alias => $clause) {
-            $mainObject->setVirtualColumn($alias, $row[$col]);
-            $col++;
+        foreach ($this->virtualColumnNames as $columnName) {
+            $mainObject->setVirtualColumn($columnName, $row[$rowOffset]);
+            $rowOffset++;
         }
 
         return $mainObject;

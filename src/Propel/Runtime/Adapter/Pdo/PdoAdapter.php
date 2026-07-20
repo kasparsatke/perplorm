@@ -23,6 +23,7 @@ use function array_keys;
 use function array_map;
 use function array_push;
 use function constant;
+use function count;
 use function defined;
 use function explode;
 use function implode;
@@ -33,6 +34,7 @@ use function is_string;
 use function preg_replace;
 use function rewind;
 use function sprintf;
+use function str_contains;
 use function str_replace;
 use function strpos;
 use function strrpos;
@@ -477,35 +479,39 @@ abstract class PdoAdapter
         $localFromClause = [];
 
         if ($aliasAll) {
-            $this->turnSelectColumnsToAliases($criteria);
-            // no select columns after that, they are all aliases
+            $this->turnSelectColumnsToAliases($criteria); // no select columns after that, they are all aliases
         } else {
+            $asColumns = $criteria->getAsColumns();
             foreach ($criteria->getSelectColumnsRaw() as $column) {
                 if ($column instanceof AbstractColumnExpression) {
                     $selectExpressions[] = $column->getColumnExpressionInQuery(true);
-                    $tableNameOrAlias = $column->getTableAlias();
+                    $tableColumns = [$column];
+                } elseif ($asColumns[$column] ?? false) { // legacy behavior: select can contain aliases
+                    continue;
                 } else {
-                    // expect every column to be of "table.column" formation
-                    // it could be a function:  e.g. MAX(books.price)
-                    $criteria->replaceColumnNames($column);
-                    $selectExpressions[] = $column; // the full column name: e.g. MAX(books.price)
-                    $tableNameOrAlias = $this->findTableNameInColumnIdentifier($column);
+                    $normalizedExpression = $criteria->normalizeFilterExpression($column);
+                    $tableColumns = $normalizedExpression->getReplacedColumns();
+                    $columnClause = $normalizedExpression->getNormalizedFilterExpression();
+                    $isAs = $columnClause !== $column && count($tableColumns) === 1 && $tableColumns[0]->getColumnName() !== $column;
+                    $selectExpressions[] = $isAs ? "$columnClause AS \"$column\"" : $columnClause;
                 }
-                if ($tableNameOrAlias === null) {
+                if (!$tableColumns) {
                     continue;
                 }
 
-                // resolve table alias
-                $sourceTableName = $criteria->getTableForAlias($tableNameOrAlias);
-                $tableId = $sourceTableName ? "$sourceTableName $tableNameOrAlias" : $tableNameOrAlias;
-                $localFromClause[$tableId] = 1;
+                // mark access to table
+                foreach ($tableColumns as $tableColumn) {
+                    $tableNameOrAlias = $tableColumn->getTableAlias();
+                    $sourceTableName = $criteria->getTableForAlias($tableNameOrAlias);
+                    $tableId = $sourceTableName ? "$sourceTableName $tableNameOrAlias" : $tableNameOrAlias;
+                    $localFromClause[$tableId] = 1;
+                }
             }
         }
 
         // set the aliases
-        foreach ($criteria->getAsColumns() as $alias => $col) {
-            $expression = $criteria->normalizeFilterExpression($col);
-            $clause = $expression->getNormalizedFilterExpression();
+        foreach ($criteria->getAsColumns() as $alias => $columnClause) {
+            $clause = $criteria->replaceColumnNames($columnClause);
             $selectExpressions[] = "$clause AS $alias";
         }
 
@@ -560,15 +566,20 @@ abstract class PdoAdapter
     public function getPlainSelectedColumns(Criteria $criteria): array
     {
         $selected = [];
-        foreach ($criteria->getSelectColumns() as $columnName) {
-            if (strpos($columnName, '(') === false) {
+        foreach ($criteria->getSelectColumnsRaw() as $column) {
+            if (!$column instanceof AbstractColumnExpression) {
+                $column = $criteria->resolveColumn($column);
+            }
+            $columnName = $column->getColumnExpressionInQuery();
+
+            if (!str_contains($columnName, '(')) {
                 $selected[] = $columnName;
             }
         }
 
-        foreach ($criteria->getAsColumns() as $col) {
-            if (strpos($col, '(') === false && !in_array($col, $selected, true)) {
-                $selected[] = $col;
+        foreach ($criteria->getAsColumns() as $alias => $columnClause) {
+            if (!str_contains($columnClause, '(') && !in_array($columnClause, $selected, true)) {
+                $selected[] = $alias;
             }
         }
 
@@ -594,11 +605,10 @@ abstract class PdoAdapter
         $columnAliases = $asColumns;
         // add the select columns back
         foreach ($selectColumns as $clause) {
-            if (!$clause instanceof AbstractColumnExpression) {
-                $clause = $criteria->replaceColumnNames($clause);
-            } else {
-                $clause = $clause->getColumnExpressionInQuery(true);
-            }
+            $clause = $clause instanceof AbstractColumnExpression
+                ? $clause->getColumnExpressionInQuery(true)
+                : $criteria->replaceColumnNames($clause);
+
             // Generate a unique alias
             $baseAlias = preg_replace('/\W/', '_', $clause);
             $alias = $baseAlias;

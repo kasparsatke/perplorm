@@ -16,8 +16,6 @@ use Propel\Tests\Bookstore\AuthorQuery;
 
 /**
  * Test class for ExistsCriterion.
- *
- * @author Moritz Ringler
  */
 class ExistsCriterionTest extends TestCaseFixtures
 {
@@ -71,7 +69,8 @@ class ExistsCriterionTest extends TestCaseFixtures
         $params = [];
         $bookSql = $bookQuery->createSelectSql($params);
 
-        $this->assertEquals('SELECT  FROM book WHERE author.id=book.author_id', $bookSql);
+        $expectedSql = 'SELECT book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id FROM book WHERE author.id=book.author_id';
+        $this->assertEquals($expectedSql, $bookSql);
     }
 
     /**

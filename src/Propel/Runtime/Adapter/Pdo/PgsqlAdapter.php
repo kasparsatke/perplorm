@@ -188,30 +188,27 @@ class PgsqlAdapter extends PdoAdapter implements SqlAdapterInterface
     {
         $groupBy = $criteria->getGroupByColumns();
 
-        if ($groupBy) {
-            // check if all selected columns are groupBy'ed.
-            $selected = $this->getPlainSelectedColumns($criteria);
-            $asSelects = $criteria->getAsColumns();
+        if (!$groupBy) {
+            return '';
+        }
 
-            foreach ($selected as $colName) {
-                if (!in_array($colName, $groupBy, true)) {
-                    // is a alias there that is grouped?
-                    $alias = array_search($colName, $asSelects);
-                    if ($alias) {
-                        if (in_array($alias, $groupBy, true)) {
-                            continue; //yes, alias is selected.
-                        }
-                    }
-                    $groupBy[] = $colName;
-                }
+        // check if all selected columns are groupBy'ed.
+        $selected = $this->getPlainSelectedColumns($criteria);
+        $asSelects = $criteria->getAsColumns();
+
+        foreach ($selected as $colName) {
+            if (in_array($colName, $groupBy, true)) {
+                continue;
             }
+            // is a alias there that is grouped?
+            $alias = array_search($colName, $asSelects);
+            if ($alias && in_array($alias, $groupBy, true)) {
+                continue; //yes, alias is selected.
+            }
+            $groupBy[] = $colName;
         }
 
-        if ($groupBy) {
-            return 'GROUP BY ' . implode(',', $groupBy);
-        }
-
-        return '';
+        return 'GROUP BY ' . implode(',', $groupBy);
     }
 
     /**
@@ -254,7 +251,6 @@ class PgsqlAdapter extends PdoAdapter implements SqlAdapterInterface
     public function doExplainPlan(ConnectionInterface $con, $query)
     {
         if ($query instanceof Criteria) {
-            $params = [];
             $dbMap = Perpl::getServiceContainer()->getDatabaseMap($query->getDbName());
             $sql = $query->createSelectSql($params);
         } else {

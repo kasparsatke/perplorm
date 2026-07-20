@@ -22,8 +22,10 @@ use function substr;
  * @method static string getOMClass(array $row, int $column, bool $withPrefix = true)
  * @method static string|null getPrimaryKeyHashFromRow(array $row, int $offset = 0, string $indexType = \Propel\Runtime\Map\TableMap::TYPE_NUM): ?string;getPrimaryKeyHashFromRow(array $row, int $offset = 0, string $indexType = TableMap::TYPE_NUM)
  * @method static void addSelectColumns(\Propel\Runtime\ActiveQuery\Criteria $criteria, ?string $alias = null)
+ * @method static array<\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\LocalColumnExpression> buildLocalTableColumnExpressions(\Propel\Runtime\ActiveQuery\Criteria $criteria, ?string $alias = null)
  * @method static void clearInstancePool()
  * @method static void clearRelatedInstancePool()
+ * @method static self getTableMap()
  */
 class TableMap
 {

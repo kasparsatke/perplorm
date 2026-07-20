@@ -20,8 +20,7 @@ use function array_pop;
 use function count;
 use function explode;
 use function implode;
-use function sprintf;
-use function strpos;
+use function str_contains;
 
 class ColumnResolver
 {
@@ -83,26 +82,31 @@ class ColumnResolver
             return new RemoteColumnExpression($sourceQuery, null, $columnIdentifier);
         }
 
-        if (strpos($columnIdentifier, '.') === false) {
-            $prefix = (string)$sourceQuery->getModelAliasOrName();
-        } else {
-            // $prefix could be either class name or table name
-            [$prefix, $columnIdentifier] = static::splitColumnLiteralParts($columnIdentifier);
+        $isPrefixed = str_contains($columnIdentifier, '.');
+        if (!$isPrefixed) {
+            $tableMap = $sourceQuery->getTableMap();
+            $columnMap = $tableMap->findColumnByName($columnIdentifier);
+            // FIXME - Check tables from joins/subqueries?
+
+            return $columnMap
+                ? new LocalColumnExpression($sourceQuery, (string)$sourceQuery->getTableNameInQuery(), $columnMap)
+                : new UnresolvedColumnExpression($sourceQuery, null, $columnIdentifier);
         }
 
+        [$prefix, $columnIdentifier] = static::splitColumnLiteralParts($columnIdentifier);
         [$tableAlias, $tableMap] = $this->resolveTableIdentifierInQuery($prefix, $sourceQuery);
-        $isColumnFound = (bool)$tableAlias;
+        $isMainOrJoin = (bool)$tableAlias;
 
-        if ($tableAlias && !$tableMap) {
+        if ($isMainOrJoin && !$tableMap) {
             // local column (join without model)
             return new RemoteColumnExpression($sourceQuery, $tableAlias, $columnIdentifier);
         }
 
-        if (!$isColumnFound && $sourceQuery->hasSubquery($prefix)) {
+        if (!$isMainOrJoin && $sourceQuery->hasSubquery($prefix)) {
             return $this->getColumnFromSubQuery($sourceQuery, $sourceQuery->getSubquery($prefix), $prefix, $columnIdentifier, $failSilently);
         }
 
-        if (!$isColumnFound && $sourceQuery instanceof ModelCriteria && $sourceQuery->getPrimaryCriteria()) {
+        if (!$isMainOrJoin && $sourceQuery instanceof ModelCriteria && $sourceQuery->getPrimaryCriteria()) {
             $resolvedColumn = $this->getQueryFromOuterQuery($sourceQuery, $prefix, $columnIdentifier);
             if ($resolvedColumn) {
                 return $resolvedColumn;
@@ -110,30 +114,20 @@ class ColumnResolver
         }
 
         if (!$tableMap) {
-            if ($failSilently) {
-                return new UnresolvedColumnExpression($sourceQuery, $tableAlias ?? $prefix, $columnIdentifier);
+            if (!$failSilently) {
+                throw new UnknownModelException("Unknown model, alias or table `$prefix`");
             }
 
-            throw new UnknownModelException(sprintf('Unknown model, alias or table "%s"', $prefix));
+            return new UnresolvedColumnExpression($sourceQuery, $tableAlias ?? $prefix, $columnIdentifier);
         }
 
         $columnMap = $tableMap->findColumnByName($columnIdentifier);
 
-        if ($columnMap !== null) {
-            $columnIdentifier = $columnMap->getName();
-
-            return new LocalColumnExpression($sourceQuery, $tableAlias, $columnMap);
-        } elseif ($sourceQuery->getColumnClauseByAlias($columnIdentifier)) {
-            // local column
-           // throw new LogicException('AS columns should not be resolved like this...');
-            echo 'inv';
+        if (!$columnMap) {
+            throw new UnknownColumnException("Unknown column `$columnIdentifier` on model, alias or table `$prefix`");
         }
 
-        if (!$failSilently) {
-            throw new UnknownColumnException(sprintf('Unknown column "%s" on model, alias or table "%s"', $columnIdentifier, $prefix));
-        }
-
-        return new UnresolvedColumnExpression($sourceQuery, $tableAlias ?? $prefix, $columnIdentifier);
+        return new LocalColumnExpression($sourceQuery, $tableAlias, $columnMap);
     }
 
     /**
@@ -230,7 +224,7 @@ class ColumnResolver
         }
 
         if (!$failSilently) {
-            throw new PropelException(sprintf('Unknown column "%s" in the subQuery with alias "%s".', $columnPhpName, $tableAlias));
+            throw new PropelException("Unknown column `$columnPhpName` in the subQuery with alias `$tableAlias`");
         }
 
         return new UnresolvedColumnExpression($sourceQuery, $tableAlias, $columnPhpName);

@@ -7,7 +7,6 @@ namespace Propel\Runtime\ActiveQuery;
 use Exception;
 use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression;
 use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\LocalColumnExpression;
-use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\UnresolvedColumnExpression;
 use Propel\Runtime\ActiveQuery\Criterion\ExistsQueryCriterion;
 use Propel\Runtime\ActiveQuery\Exception\UnknownColumnException;
 use Propel\Runtime\ActiveQuery\Exception\UnknownRelationException;
@@ -27,12 +26,11 @@ use Propel\Runtime\Exception\LogicException;
 use Propel\Runtime\Exception\PropelException;
 use Propel\Runtime\Exception\RuntimeException;
 use Propel\Runtime\Exception\UnexpectedValueException;
-use Propel\Runtime\Formatter\SimpleArrayFormatter;
 use Propel\Runtime\Map\Exception\ColumnNotFoundException;
 use Propel\Runtime\Map\RelationMap;
 use Propel\Runtime\Perpl;
 use Propel\Runtime\Util\PropelModelPager;
-use function array_key_exists;
+use function array_key_last;
 use function array_keys;
 use function array_merge;
 use function array_shift;
@@ -40,12 +38,10 @@ use function array_values;
 use function assert;
 use function count;
 use function current;
-use function end;
 use function explode;
 use function implode;
 use function in_array;
 use function is_array;
-use function key;
 use function lcfirst;
 use function str_contains;
 use function str_replace;
@@ -55,6 +51,7 @@ use function strpos;
 use function strrpos;
 use function strtoupper;
 use function substr;
+use function trigger_deprecation;
 use function trigger_error;
 use const E_USER_WARNING;
 
@@ -114,20 +111,6 @@ class ModelCriteria extends BaseModelCriteria
      * Whether to clone the current object before termination methods
      */
     protected bool $isKeepQuery = true;
-
-    /**
-     * User-selected columns.
-     *
-     * Set in {@see static::select()}. Will be added as AS columns in {@see static::setupUserSelectedColumns()}
-     *
-     * @var array<string>|null
-     */
-    protected array|null $select = null;
-
-    /**
-     * Used to memorize whether we added self-select columns before.
-     */
-    protected bool $isSelfSelected = false;
 
     /**
      * Indicates that this query is wrapped in an InnerQueryCriterion.
@@ -399,89 +382,6 @@ class ModelCriteria extends BaseModelCriteria
     }
 
     /**
-     * Makes the ModelCriteria return a string, array, or ArrayCollection
-     * Examples:
-     *   ArticleQuery::create()->select('Name')->find();
-     *   => ArrayCollection Object ('Foo', 'Bar')
-     *
-     *   ArticleQuery::create()->select('Name')->findOne();
-     *   => string 'Foo'
-     *
-     *   ArticleQuery::create()->select(array('Id', 'Name'))->find();
-     *   => ArrayCollection Object (
-     *        array('Id' => 1, 'Name' => 'Foo'),
-     *        array('Id' => 2, 'Name' => 'Bar')
-     *      )
-     *
-     *   ArticleQuery::create()->select(array('Id', 'Name'))->findOne();
-     *   => array('Id' => 1, 'Name' => 'Foo')
-     *
-     * @param mixed $columnArray A list of column names (e.g. array('Title', 'Category.Name', 'c.Content')) or a single column name (e.g. 'Name')
-     *
-     * @throws \Propel\Runtime\Exception\PropelException
-     *
-     * @return $this
-     */
-    public function select($columnArray)
-    {
-        if (!$columnArray) {
-            throw new PropelException('You must ask for at least one column');
-        }
-
-        if ($columnArray === '*') {
-            $columnArray = $this->resolveSelectAll();
-        }
-        if (!is_array($columnArray)) {
-            $columnArray = [$columnArray];
-        }
-        $this->select = $columnArray;
-        $this->isSelfSelected = true;
-
-        return $this;
-    }
-
-    /**
-     * @return list<string>
-     */
-    protected function resolveSelectAll(): array
-    {
-        $columnArray = [];
-        foreach ($this->getTableMapOrFail()->getColumns() as $columnMap) {
-            $columnArray[] = $this->modelName . '.' . $columnMap->getPhpName();
-        }
-
-        return $columnArray;
-    }
-
-    /**
-     * Retrieves the columns defined by a previous call to select().
-     *
-     * @see select()
-     *
-     * @return array<string>|null A list of column names (e.g. array('Title', 'Category.Name', 'c.Content')) or a single column name (e.g. 'Name')
-     */
-    public function getSelect()
-    {
-        return $this->select;
-    }
-
-    /**
-     * Whether this Criteria has any select columns.
-     *
-     * This will include columns added with addAsColumn() method.
-     *
-     * @see addAsColumn()
-     * @see addSelectColumn()
-     *
-     * @return bool
-     */
-    #[\Override]
-    public function hasSelectClause(): bool
-    {
-        return (bool)$this->select || parent::hasSelectClause();
-    }
-
-    /**
      * This method returns the previousJoin for this ModelCriteria,
      * by default this is null, but after useQuery this is set the to the join of that use
      *
@@ -529,7 +429,8 @@ class ModelCriteria extends BaseModelCriteria
      */
     public function join(string $relationSpecifier, string $joinType = Criteria::INNER_JOIN)
     {
-        [$relationMap, $relationName, $relationAlias, $leftName, $previousJoin] = $this->resolveJoinContext($relationSpecifier);
+        [$relationIdentifier, $relationAlias] = self::getClassAndAlias($relationSpecifier); // remove alias from "Book b"
+        [$relationMap, $relationName, $leftName, $previousJoin] = $this->resolveJoinContext($relationIdentifier);
         $leftTableAlias = isset($this->aliases[$leftName]) ? $leftName : null;
 
         // set up ModelJoin
@@ -549,22 +450,21 @@ class ModelCriteria extends BaseModelCriteria
     }
 
     /**
-     * @param string $relationSpecifier
+     * @param string $relationIdentifier
      *
      * @throws \Propel\Runtime\Exception\PropelException
      *
-     * @return array{\Propel\Runtime\Map\RelationMap, string, string|null, string|null, \Propel\Runtime\ActiveQuery\Join|null}
+     * @return array{\Propel\Runtime\Map\RelationMap, string, string|null, \Propel\Runtime\ActiveQuery\Join|null}
      */
-    protected function resolveJoinContext(string $relationSpecifier): array
+    protected function resolveJoinContext(string $relationIdentifier): array
     {
-        [$relationIdentifier, $relationAlias] = self::getClassAndAlias($relationSpecifier); // remove alias from "Book b"
         if (!str_contains($relationIdentifier, '.')) {
             // simple relation name, refers to the current table
             $leftName = $this->getModelAliasOrName();
             $previousJoin = $this->getPreviousJoin();
             $relationMap = $this->getTableMap()->getRelation($relationIdentifier);
 
-            return [$relationMap, $relationIdentifier, $relationAlias, $leftName, $previousJoin];
+            return [$relationMap, $relationIdentifier, $leftName, $previousJoin];
         }
 
         // $relation looks like '$leftName.$relationName $relationAlias'
@@ -587,7 +487,7 @@ class ModelCriteria extends BaseModelCriteria
 
         $relationMap = $tableMap->getRelation($relationName);
 
-        return [$relationMap, $relationName, $relationAlias, $leftName, $previousJoin];
+        return [$relationMap, $relationName, $leftName, $previousJoin];
     }
 
     /**
@@ -763,24 +663,6 @@ class ModelCriteria extends BaseModelCriteria
             throw new PropelException(__METHOD__ . ' does not allow hydration for many-to-many relationships');
         }
 
-        if ($this->primaryCriteria && !$this->primaryCriteria->hasSelectClause()) {
-            /*
-             * Populating from useQuery() screws up column selection because below call to `addRelationSelectColumns()`
-             * prevents main table columns to be added.
-             */
-            $leftName = $join->getRelationMap()?->getLeftTable()?->getPhpName();
-
-            throw new PropelException("Populating inside useQuery() does not work reliably at the moment. Use `populateRelation('{$leftName}.{$relationName}')` on the outmost query.");
-        }
-
-        // check that the columns of the main class are already added (but only if this isn't a useQuery)
-        if (!$this->hasSelectClause() && !$this->getPrimaryCriteria()) {
-            $this->addSelfSelectColumns();
-        }
-        // add the columns of the related class
-        $this->addRelationSelectColumns($relationName);
-
-        // list the join for later hydration in the formatter
         $this->relatedModelsToPopulate[$relationName] = new RelationPopulator($join);
 
         return $this;
@@ -815,10 +697,6 @@ class ModelCriteria extends BaseModelCriteria
     {
         $name ??= str_replace(['.', '(', ')'], '', $clause);
         $clause = $this->normalizeFilterExpression($clause)->getNormalizedFilterExpression();
-        // check that the columns of the main class are already added (if this is the primary ModelCriteria)
-        if (!$this->hasSelectClause() && !$this->getPrimaryCriteria()) {
-            $this->addSelfSelectColumns();
-        }
 
         return $this->addAsColumn($name, $clause);
     }
@@ -1014,18 +892,6 @@ class ModelCriteria extends BaseModelCriteria
     #[\Override]
     public function mergeWith(Criteria $criteria, ?string $operator = null)
     {
-        if (
-            $criteria instanceof ModelCriteria
-            && !$criteria->getPrimaryCriteria()
-            && $criteria->isSelfColumnsSelected()
-            && $criteria->relatedModelsToPopulate
-        ) {
-            if (!$this->isSelfColumnsSelected()) {
-                $this->addSelfSelectColumns();
-            }
-            $criteria->removeSelfSelectColumns();
-        }
-
         parent::mergeWith($criteria, $operator);
 
         if ($criteria instanceof ModelCriteria) {
@@ -1045,9 +911,6 @@ class ModelCriteria extends BaseModelCriteria
     public function clear()
     {
         $this->primaryCriteria = null;
-        $this->formatter = null;
-        $this->select = null;
-        $this->isSelfSelected = false;
 
         return parent::clear();
     }
@@ -1094,10 +957,6 @@ class ModelCriteria extends BaseModelCriteria
     #[\Override]
     public function addSubquery(Criteria $subQuery, ?string $alias = null, bool $addAliasAndSelectColumns = true)
     {
-        if (!$subQuery->hasSelectClause() && $subQuery instanceof ModelCriteria) {
-            $subQuery->addSelfSelectColumns();
-        }
-
         parent::addSubquery($subQuery, $alias);
         if ($subQuery instanceof BaseModelCriteria && $subQuery->modelAlias) {
             $subQuery->useAliasInSQL = true;
@@ -1107,19 +966,15 @@ class ModelCriteria extends BaseModelCriteria
             return $this;
         }
 
-        if ($alias === null) {
-            // get the default alias set in parent::addSubquery()
-            end($this->subqueries);
-            $alias = (string)key($this->subqueries);
-        }
+        $alias ??= (string)array_key_last($this->subqueries); // get generated alias from parent::addSubquery()
 
         if ($subQuery->modelTableMapName === $this->modelTableMapName) {
             $this->setModelAlias($alias, true);
-            $this->addSelfSelectColumns(true);
-        } else {
-            $tableMapClassName = $subQuery->modelTableMapName;
-            $this->addSelfSelectColumnsFromTableMapClass($tableMapClassName, $alias);
         }
+
+        $tableMapClassName = $subQuery->modelTableMapName;
+        assert($tableMapClassName !== null);
+        $tableMapClassName::getTableMap()->addSelectColumns($this, $alias);
 
         return $this;
     }
@@ -1139,45 +994,35 @@ class ModelCriteria extends BaseModelCriteria
     }
 
     /**
-     * Adds the select columns for the current table
+     * @deprecated Internal function, not used anymore.
      *
-     * @param bool $force To enforce adding columns for changed alias, set it to true (f.e. with sub selects)
+     * @param bool $force
      *
      * @return $this
      */
     public function addSelfSelectColumns(bool $force = false)
     {
-        if ($this->isSelfSelected && !$force) {
-            return $this;
-        }
-
-        $tableMapClassName = $this->modelTableMapName;
-        assert($tableMapClassName !== null);
-
-        $alias = ($this->useAliasInSQL) ? $this->modelAlias : null;
-
-        $this->addSelfSelectColumnsFromTableMapClass($tableMapClassName, $alias);
+        trigger_deprecation('Perpl', '2.10.0', __METHOD__ . ' is deprecated and has no effect.');
 
         return $this;
     }
 
     /**
-     * Adds the select columns for the given table.
+     * @deprecated Internal function, not used anymore.
      *
-     * @param string $tableMapClassName
+     * @param class-string<\Propel\Runtime\Map\TableMap> $tableMapClassName
      * @param string|null $alias
      *
      * @return $this
      */
     public function addSelfSelectColumnsFromTableMapClass(string $tableMapClassName, ?string $alias = null)
     {
-        $tableMapClassName::addSelectColumns($this, $alias);
-        $this->isSelfSelected = true;
-
         return $this;
     }
 
     /**
+     * @deprecated Internal function, not used anymore.
+     *
      * Removes the select columns for the current table
      *
      * @param bool $force To enforce removing columns for changed alias, set it to true (f.e. with sub selects)
@@ -1186,14 +1031,7 @@ class ModelCriteria extends BaseModelCriteria
      */
     public function removeSelfSelectColumns(bool $force = false)
     {
-        if (!$this->isSelfSelected && !$force) {
-            return $this;
-        }
-
-        /** @var string $tableMap */
-        $tableMap = $this->modelTableMapName;
-        $tableMap::removeSelectColumns($this, $this->useAliasInSQL ? $this->modelAlias : null);
-        $this->isSelfSelected = false;
+        trigger_deprecation('Perpl', '2.10.0', __METHOD__ . ' is deprecated and has no effect.');
 
         return $this;
     }
@@ -1205,23 +1043,23 @@ class ModelCriteria extends BaseModelCriteria
      */
     public function isSelfColumnsSelected(): bool
     {
-        return $this->isSelfSelected;
+        return (bool)$this->selectColumns || $this->expectManualColumnSelection;
     }
 
     /**
      * Adds the select columns for a relation
      *
-     * @param string $relation The relation name or alias, as defined in join()
+     * @param string $relationName The relation name or alias, as defined in join()
      *
      * @return $this
      */
-    public function addRelationSelectColumns(string $relation)
+    public function addRelationSelectColumns(string $relationName)
     {
-        /** @var \Propel\Runtime\ActiveQuery\ModelJoin $join */
-        $join = $this->joins[$relation];
-        if ($join->getTableMap()) {
-            $join->getTableMap()->addSelectColumns($this, $join->getRelationAlias());
-        }
+        $join = $this->joins[$relationName];
+        assert($join instanceof ModelJoin);
+        $tableMap = $join->getTableMap();
+        assert($tableMap !== null);
+        $tableMap::addSelectColumns($this, $join->getRelationAlias());
 
         return $this;
     }
@@ -1348,10 +1186,7 @@ class ModelCriteria extends BaseModelCriteria
      */
     public function fetch(?ConnectionInterface $con = null): DataFetcherInterface
     {
-        if ($con === null) {
-            $con = Perpl::getServiceContainer()->getReadConnection($this->getDbName());
-        }
-
+        $con ??= Perpl::getServiceContainer()->getReadConnection($this->getDbName());
         $this->basePreSelect($con);
 
         return $this->doSelect($con);
@@ -1707,24 +1542,6 @@ class ModelCriteria extends BaseModelCriteria
     }
 
     /**
-     * @param \Propel\Runtime\Connection\ConnectionInterface|null $con
-     *
-     * @return \Propel\Runtime\DataFetcher\DataFetcherInterface
-     */
-    #[\Override]
-    public function doCount(?ConnectionInterface $con = null): DataFetcherInterface
-    {
-        $this->configureSelectColumns();
-
-        // check that the columns of the main class are already added (if this is the primary ModelCriteria)
-        if (!$this->hasSelectClause() && !$this->getPrimaryCriteria()) {
-            $this->addSelfSelectColumns();
-        }
-
-        return parent::doCount($con);
-    }
-
-    /**
      * Issue an existence check on the current ModelCriteria
      *
      * @param \Propel\Runtime\Connection\ConnectionInterface|null $con an optional connection object
@@ -2076,66 +1893,13 @@ class ModelCriteria extends BaseModelCriteria
     }
 
     /**
-     * Builds, binds and executes a SELECT query based on the current object.
-     *
-     * @param \Propel\Runtime\Connection\ConnectionInterface|null $con A connection object
-     *
-     * @return \Propel\Runtime\DataFetcher\DataFetcherInterface A dataFetcher using the connection, ready to be fetched
-     */
-    #[\Override]
-    public function doSelect(?ConnectionInterface $con = null): DataFetcherInterface
-    {
-        $this->configureSelectColumns();
-        $this->addSelfSelectColumns();
-
-        return parent::doSelect($con);
-    }
-
-    /**
-     * {@inheritDoc}
-     *
-     * @see \Propel\Runtime\ActiveQuery\Criteria::createSelectSql()
-     *
-     * @param array $params Parameters that are to be replaced in prepared statement.
-     *
-     * @return string
-     */
-    #[\Override]
-    public function createSelectSql(array &$params): string
-    {
-        $this->configureSelectColumns();
-
-        return parent::createSelectSql($params);
-    }
-
-    /**
-     * @throws \Propel\Runtime\Exception\PropelException
+     * @deprecated Internal method, not needed anymore, has no effect.
      *
      * @return void
      */
     public function configureSelectColumns(): void
     {
-        if (!$this->select) {
-            return;
-        }
-
-        if ($this->formatter === null) {
-            $this->setFormatter(SimpleArrayFormatter::class);
-        }
-        $this->selectColumns = [];
-
-        foreach ($this->select as $columnName) {
-            if (array_key_exists($columnName, $this->asColumns)) {
-                continue;
-            }
-            $resolvedColumn = $this->columnResolver->resolveColumn($columnName);
-            if ($resolvedColumn instanceof UnresolvedColumnExpression) {
-                throw new PropelException("Cannot find selected column '$columnName'");
-            }
-            $localColumnName = $resolvedColumn->getColumnExpressionInQuery(true);
-            // always put quotes around the columnName to be safe, we strip them in the formatter
-            $this->addAsColumn('"' . $columnName . '"', $localColumnName);
-        }
+        trigger_deprecation('Perpl', '2.10.0', __METHOD__ . ' is deprecated and has no effect.');
     }
 
     /**
@@ -2257,29 +2021,5 @@ class ModelCriteria extends BaseModelCriteria
         }
 
         return parent::__call($name, $arguments);
-    }
-
-    /**
-     * Override method to prevent an addition of self columns.
-     *
-     * @param \Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression|string $name
-     *
-     * @return $this
-     */
-    #[\Override]
-    public function addSelectColumn($name)
-    {
-        $this->isSelfSelected = true;
-
-        return parent::addSelectColumn($name);
-    }
-
-    /**
-     * @return bool
-     */
-    #[\Override]
-    protected function isEmpty(): bool
-    {
-        return parent::isEmpty() && !($this->formatter || $this->modelAlias || $this->relatedModelsToPopulate || $this->select);
     }
 }

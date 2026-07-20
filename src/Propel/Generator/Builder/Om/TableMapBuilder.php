@@ -266,6 +266,7 @@ class $className extends TableMap
      */
     protected function addSelectMethods(string &$script): void
     {
+        $this->addBuildLocalTableColumnExpressions($script);
         $this->addAddSelectColumns($script);
         $this->addRemoveSelectColumns($script);
     }
@@ -1359,6 +1360,9 @@ class $className extends TableMap
      */
     protected function addAddSelectColumns(string &$script): void
     {
+        $this->declareGlobalFunction('array_map');
+
+        $tableName = $this->getTable()->getName();
         $script .= "
     /**
      * Add all the columns needed to create a new object.
@@ -1374,17 +1378,47 @@ class $className extends TableMap
      */
     public static function addSelectColumns(Criteria \$criteria, ?string \$alias = null): void
     {
+        \$columnExpressions = static::buildLocalTableColumnExpressions(\$criteria, \$alias ?: '$tableName');
+        array_map([\$criteria, 'addSelectColumn'], \$columnExpressions);
+    }\n";
+    }
+
+    /**
+     * Adds the addSelectColumns() method.
+     *
+     * @param string $script The script will be modified in this method.
+     *
+     * @return void
+     */
+    protected function addBuildLocalTableColumnExpressions(string &$script): void
+    {
+        $tableName = $this->getTable()->getName();
+        $columns = $this->getTable()->getEagerColumns();
+        $normalizedColumnNames = array_map(fn (Column $column) => strtoupper($column->getName()), $columns);
+
+        $script .= "
+    /**
+     * Get Table columns as ColumnExpressionObjects.
+     *
+     * Note: Excludes lazy-loaded columns.
+     *
+     * @param \Propel\Runtime\ActiveQuery\Criteria \$criteria
+     * @param string|null \$tableNameInQuery
+     *
+     * @return array<\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\LocalColumnExpression>
+     */
+    public static function buildLocalTableColumnExpressions(Criteria \$criteria, string|null \$tableNameInQuery = null): array
+    {
         \$tableMap = static::getTableMap();
-        \$tableAlias = \$alias ?: '{$this->getTable()->getName()}';";
-        foreach ($this->getTable()->getColumns() as $col) {
-            if ($col->isLazyLoad()) {
-                continue;
-            }
-            $normalizedColumnName = strtoupper($col->getName());
+        \$tableNameInQuery ??= '$tableName';
+
+        return [";
+        foreach ($normalizedColumnNames as $normalizedColumnName) {
             $script .= "
-        \$criteria->addSelectColumn(new LocalColumnExpression(\$criteria, \$tableAlias, \$tableMap->columns['$normalizedColumnName']));";
+            new LocalColumnExpression(\$criteria, \$tableNameInQuery, \$tableMap->columns['$normalizedColumnName']),";
         }
         $script .= "
+        ];
     }\n";
     }
 

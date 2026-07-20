@@ -178,15 +178,30 @@ class TestCase extends PHPUnitTestCase
      *
      * @param class-string|object $obj Instance with protected or private property
      * @param string $name Name of the protected or private property
-     * @param class-string|null $referenceClass Optional parent class owning the property
      *
      * @return mixed
      */
-    public function getObjectPropertyValue($obj, string $name, string|null $referenceClass = null)
+    public function getObjectPropertyValue($obj, string $name)
     {
         $getValueParam = is_object($obj) ? $obj : null;
 
-        return $this->getReflectionProperty($referenceClass ?? $obj, $name)->getValue($getValueParam);
+        return $this->getReflectionProperty($obj, $name)->getValue($getValueParam);
+    }
+
+    /**
+     * Assert object property matches value.
+     *
+     * @param mixed $expected
+     * @param class-string|object $obj Instance with protected or private property
+     * @param string $name Name of the protected or private property
+     * @param string $message
+     *
+     * @return mixed
+     */
+    public function assertObjectPropertyValue($expected, $obj, string $propertyName, string $message = ''): void
+    {
+        $value = $this->getObjectPropertyValue($obj, $propertyName);
+        $this->assertEquals($expected, $value, $message);
     }
 
     /**

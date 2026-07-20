@@ -16,6 +16,7 @@ use Propel\Runtime\Map\TableMap;
 use Propel\Runtime\Map\TableMapTrait;
 use Propel\Runtime\Perpl;
 use Spec;
+use function array_map;
 use function assert;
 use function is_array;
 use function is_object;
@@ -452,6 +453,27 @@ class GenspecTableTableMap extends TableMap
     }
 
     /**
+     * Get Table columns as ColumnExpressionObjects.
+     *
+     * Note: Excludes lazy-loaded columns.
+     *
+     * @param \Propel\Runtime\ActiveQuery\Criteria $criteria
+     * @param string|null $tableNameInQuery
+     *
+     * @return array<\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\LocalColumnExpression>
+     */
+    public static function buildLocalTableColumnExpressions(Criteria $criteria, string|null $tableNameInQuery = null): array
+    {
+        $tableMap = static::getTableMap();
+        $tableNameInQuery ??= 'genspec_table';
+
+        return [
+            new LocalColumnExpression($criteria, $tableNameInQuery, $tableMap->columns['ID']),
+            new LocalColumnExpression($criteria, $tableNameInQuery, $tableMap->columns['TYPE']),
+        ];
+    }
+
+    /**
      * Add all the columns needed to create a new object.
      *
      * Note: any columns that were marked with lazyLoad="true" in the
@@ -465,10 +487,8 @@ class GenspecTableTableMap extends TableMap
      */
     public static function addSelectColumns(Criteria $criteria, ?string $alias = null): void
     {
-        $tableMap = static::getTableMap();
-        $tableAlias = $alias ?: 'genspec_table';
-        $criteria->addSelectColumn(new LocalColumnExpression($criteria, $tableAlias, $tableMap->columns['ID']));
-        $criteria->addSelectColumn(new LocalColumnExpression($criteria, $tableAlias, $tableMap->columns['TYPE']));
+        $columnExpressions = static::buildLocalTableColumnExpressions($criteria, $alias ?: 'genspec_table');
+        array_map([$criteria, 'addSelectColumn'], $columnExpressions);
     }
 
     /**

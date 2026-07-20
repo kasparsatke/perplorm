@@ -33,7 +33,7 @@ class CriteriaTest extends BookstoreTestBase
     /**
      * The criteria to use in the test.
      *
-     * @var \Propel\Runtime\ActiveQuery\Criteria
+     * @var \Propel\Runtime\ActiveQuery\ModelCriteria
      */
     private $c;
 
@@ -111,13 +111,14 @@ class CriteriaTest extends BookstoreTestBase
 
         $value2 = 'myValue2';
 
-        $this->c->add($key, $value1, Criteria::EQUAL);
-        $this->c->addAnd($key, $value2, Criteria::EQUAL);
+        $c = new Criteria();
+
+        $c->addAnd($key, $value1, Criteria::EQUAL);
+        $c->addAnd($key, $value2, Criteria::EQUAL);
 
         $expect = $this->getSql('SELECT  FROM myTable1 WHERE (myTable1.myColumn1=:p1 AND myTable1.myColumn1=:p2)');
 
-        $params = [];
-        $result = $this->c->createSelectSql($params);
+        $result = $c->createSelectSql($params);
 
         $expect_params = [
             ['table' => 'myTable1', 'column' => 'myColumn1', 'value' => 'myValue1'],
@@ -148,14 +149,14 @@ class CriteriaTest extends BookstoreTestBase
         $value3 = 'myValue3';
         $key3 = "$table3.$column3";
 
-        $this->c->add($key1, $value1, Criteria::EQUAL);
-        $this->c->add($key3, $value3, Criteria::EQUAL);
-        $this->c->addAnd($key2, $value2, Criteria::EQUAL);
+        $c = new Criteria();
+        $c->addAnd($key1, $value1, Criteria::EQUAL);
+        $c->addAnd($key3, $value3, Criteria::EQUAL);
+        $c->addAnd($key2, $value2, Criteria::EQUAL);
 
         $expect = $this->getSql('SELECT  FROM myTable1, myTable3 WHERE (myTable1.myColumn1=:p1 AND myTable1.myColumn1=:p2) AND myTable3.myColumn3=:p3');
 
-        $params = [];
-        $result = $this->c->createSelectSql($params);
+        $result = $c->createSelectSql($params);
 
         $expect_params = [
             ['table' => 'myTable1', 'column' => 'myColumn1', 'value' => 'myValue1'],
@@ -182,13 +183,13 @@ class CriteriaTest extends BookstoreTestBase
         $value2 = 'myValue2';
         $key2 = "$table2.$column2";
 
-        $this->c->add($key1, $value1, Criteria::EQUAL);
-        $this->c->addAnd($key2, $value2, Criteria::EQUAL);
+        $c = new Criteria();
+        $c->addAnd($key1, $value1, Criteria::EQUAL);
+        $c->addAnd($key2, $value2, Criteria::EQUAL);
 
         $expect = $this->getSql('SELECT  FROM myTable1, myTable2 WHERE myTable1.myColumn1=:p1 AND myTable2.myColumn2=:p2');
 
-        $params = [];
-        $result = $this->c->createSelectSql($params);
+        $result = $c->createSelectSql($params);
 
         $expect_params = [
             ['table' => 'myTable1', 'column' => 'myColumn1', 'value' => 'myValue1'],
@@ -214,13 +215,13 @@ class CriteriaTest extends BookstoreTestBase
         $value2 = 'myValue2';
         $key2 = "$table2.$column2";
 
-        $this->c->add($key1, $value1, Criteria::EQUAL);
-        $this->c->addOr($key2, $value2, Criteria::EQUAL);
+        $c = new Criteria();
+        $c->addAnd($key1, $value1, Criteria::EQUAL);
+        $c->addOr($key2, $value2, Criteria::EQUAL);
 
         $expect = $this->getSql('SELECT  FROM myTable1 WHERE (myTable1.myColumn1=:p1 OR myTable1.myColumn1=:p2)');
 
-        $params = [];
-        $result = $this->c->createSelectSql($params);
+        $result = $c->createSelectSql($params);
 
         $expect_params = [
             ['table' => 'myTable1', 'column' => 'myColumn1', 'value' => 'myValue1'],
@@ -236,19 +237,14 @@ class CriteriaTest extends BookstoreTestBase
      */
     public function testPrimaryTableNameQuoting()
     {
-        $tableName = 'myTable1';
-        $this->c->setPrimaryTableName($tableName);
-        $countSelect = 'COUNT(*)';
-        $this->c->addSelectColumn($countSelect);
-        $adapter = Propel::getServiceContainer()->getAdapter('bookstore');
-        $escapedTableName = $adapter->quoteIdentifierTable($tableName);
+        $c = new Criteria();
+        $c->setPrimaryTableName('myTable1');
+        $c->addSelectColumn('COUNT(*)');
+        $c->setIdentifierQuoting(true);
 
-        $this->c->setIdentifierQuoting(true);
-        $params = [];
-        $this->assertEquals(
-            "SELECT {$countSelect} FROM {$escapedTableName}",
-            $this->c->createSelectSql($params)
-        );
+        $sql = $c->createSelectSql($params);
+        $expected = $this->getSql("SELECT COUNT(*) FROM `myTable1`");
+        $this->assertEquals($expected, $sql);
     }
 
     /**
@@ -266,13 +262,13 @@ class CriteriaTest extends BookstoreTestBase
         $value2 = 'myValue2';
         $key2 = "$table2.$column2";
 
-        $this->c->add($key1, $value1, Criteria::EQUAL);
-        $this->c->addOr($key2, $value2, Criteria::EQUAL);
+        $c = new Criteria();
+        $c->addAnd($key1, $value1, Criteria::EQUAL);
+        $c->addOr($key2, $value2, Criteria::EQUAL);
 
         $expect = $this->getSql('SELECT  FROM myTable1, myTable2 WHERE (myTable1.myColumn1=:p1 OR myTable2.myColumn2=:p2)');
 
-        $params = [];
-        $result = $this->c->createSelectSql($params);
+        $result = $c->createSelectSql($params);
 
         $expect_params = [
             ['table' => 'myTable1', 'column' => 'myColumn1', 'value' => 'myValue1'],
@@ -293,12 +289,12 @@ class CriteriaTest extends BookstoreTestBase
         $value1 = 'myValue1';
         $key1 = "$table1.$column1";
 
-        $this->c->addOr($key1, $value1, Criteria::EQUAL);
+        $c = new Criteria();
+        $c->addOr($key1, $value1, Criteria::EQUAL);
 
         $expect = $this->getSql('SELECT  FROM myTable1 WHERE myTable1.myColumn1=:p1');
 
-        $params = [];
-        $result = $this->c->createSelectSql($params);
+        $result = $c->createSelectSql($params);
 
         $expect_params = [
             ['table' => 'myTable1', 'column' => 'myColumn1', 'value' => 'myValue1'],
@@ -1050,7 +1046,7 @@ class CriteriaTest extends BookstoreTestBase
             ->select(['title'])
             ->addAsColumn('price', 'id')
             ->addHaving('price >= 12');
-        $expected = $this->getSql('SELECT id AS price, book.title AS "title" FROM book HAVING price >= 12');
+        $expected = $this->getSql('SELECT book.title, book.id AS price FROM book HAVING price >= 12');
         $params = [];
         $result = $c->createSelectSql($params);
         $this->assertEquals($expected, $result);
@@ -1067,7 +1063,7 @@ class CriteriaTest extends BookstoreTestBase
     {
         $c = (new BookQuery())
             ->addHaving('price', 12, Criteria::GREATER_EQUAL);
-        $expected = $this->getSql('SELECT  FROM book HAVING book.price>=:p1');
+        $expected = $this->getSql('SELECT book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id FROM book HAVING book.price>=:p1');
         $params = [];
         $result = $c->createSelectSql($params);
         $this->assertEquals($expected, $result);
@@ -1391,8 +1387,9 @@ class CriteriaTest extends BookstoreTestBase
      */
     public function testCombineAndFilterBy()
     {
+        $columns = 'book.id, book.title, book.isbn, book.price, book.publisher_id, book.author_id';
         $params = [];
-        $sql = $this->getSql('SELECT  FROM book WHERE ((book.title LIKE :p1 OR book.isbn LIKE :p2) AND book.title LIKE :p3)');
+        $sql = $this->getSql("SELECT $columns FROM book WHERE ((book.title LIKE :p1 OR book.isbn LIKE :p2) AND book.title LIKE :p3)");
         $c = BookQuery::create()
             ->condition('u1', 'book.title LIKE ?', '%test1%')
             ->condition('u2', 'book.isbn LIKE ?', '%test2%')
@@ -1402,7 +1399,7 @@ class CriteriaTest extends BookstoreTestBase
         $this->assertEquals($sql, $result);
 
         $params = [];
-        $sql = $this->getSql('SELECT  FROM book WHERE (book.title LIKE :p1 AND (book.title LIKE :p2 OR book.isbn LIKE :p3))');
+        $sql = $this->getSql("SELECT $columns FROM book WHERE (book.title LIKE :p1 AND (book.title LIKE :p2 OR book.isbn LIKE :p3))");
         $c = BookQuery::create()
             ->filterByTitle('%test3%', Criteria::LIKE)
             ->condition('u1', 'book.title LIKE ?', '%test1%')

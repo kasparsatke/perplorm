@@ -13,6 +13,8 @@ use Propel\Runtime\Exception\PropelException;
 use Propel\Runtime\Map\TableMap;
 use Propel\Runtime\Perpl;
 use function array_any;
+use function array_combine;
+use function array_keys;
 
 /**
  * Abstract class for query formatter
@@ -47,7 +49,7 @@ abstract class AbstractFormatter
     /**
      * @var array<string, string>
      */
-    protected $asColumns = [];
+    protected $columnNames = [];
 
     /**
      * @var bool
@@ -118,13 +120,26 @@ abstract class AbstractFormatter
         }
         $this->setClass($modelClassName);
         $this->setRelatedModelsToPopulate($criteria->getRelatedModelsToPopulate());
-        $this->asColumns = $criteria->getAsColumns();
+        $this->columnNames = $this->getColumnNamesFromQuery($criteria);
         $this->hasLimit = $criteria->getLimit() != -1;
         if ($dataFetcher) {
             $this->setDataFetcher($dataFetcher);
         }
 
         return $this;
+    }
+
+    /**
+     * @param \Propel\Runtime\ActiveQuery\BaseModelCriteria $query
+     *
+     * @return array<string>
+     */
+    protected function getColumnNamesFromQuery(BaseModelCriteria $query): array
+    {
+        $selects = $query->getSelectColumns();
+        $as = array_keys($query->getAsColumns());
+
+        return [...$selects, ...$as];
     }
 
     // DataObject getters & setters
@@ -209,21 +224,43 @@ abstract class AbstractFormatter
     }
 
     /**
+     * @deprecated Use {@see static::setColumnNames()}.
+     *
      * @param array<string, string> $asColumns
      *
      * @return void
      */
     public function setAsColumns(array $asColumns = []): void
     {
-        $this->asColumns = $asColumns;
+        $this->setColumnNames(array_keys($asColumns));
     }
 
     /**
-     * @return array<string, string>
+     * @param array<string> $columnNames
+     *
+     * @return void
+     */
+    public function setColumnNames(array $columnNames = []): void
+    {
+        $this->columnNames = $columnNames;
+    }
+
+    /**
+     * @deprecated Use {@see static::getColumnNames()}.
+     *
+     * @return array<string>
      */
     public function getAsColumns(): array
     {
-        return $this->asColumns;
+        return array_combine($this->columnNames, $this->columnNames);
+    }
+
+    /**
+     * @return array<string>
+     */
+    public function getColumnNames(): array
+    {
+        return $this->columnNames;
     }
 
     /**

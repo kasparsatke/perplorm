@@ -9,7 +9,6 @@
 namespace Propel\Tests\Runtime\ActiveQuery;
 
 use Propel\Runtime\ActiveQuery\RelationPopulator;
-use Propel\Runtime\Exception\PropelException;
 use Propel\Tests\Bookstore\AuthorQuery;
 use Propel\Tests\Bookstore\BookQuery;
 use Propel\Tests\Bookstore\BookReaderQuery;
@@ -262,15 +261,5 @@ class ModelPopulateRelationTest extends TestCaseFixtures
         $join = $joins['Author'];
         $with = new RelationPopulator($join);
         $this->assertEquals('Author', $with->getRightPhpName(), 'A ModelWith has a right phpName even when there are previous joins with custom relation names');
-    }
-
-    public function testPopulateFromUse(): void
-    {
-        $useBookQuery = AuthorQuery::create()->useBookQuery();
-
-        $this->expectException(PropelException::class);
-        $this->expectExceptionMessage('Populating inside useQuery() does not work reliably at the moment. Use `populateRelation(\'Book.BookSummary\')` on the outmost query.');
-
-        $useBookQuery->populateBookSummary();
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Propel\Runtime\Formatter;
 
 use Propel\Runtime\ActiveRecord\ActiveRecordInterface;
+use Propel\Runtime\Collection\ArrayCollection;
 use Propel\Runtime\DataFetcher\DataFetcherInterface;
 use Propel\Runtime\Exception\LogicException;
 
@@ -55,19 +56,21 @@ class ArrayFormatter extends AbstractFormatterWithHydration
         }
 
         $this->currentObjects = [];
-        $this->alreadyHydratedObjects = [];
+        $this->localTuplePool = [];
         $dataFetcher->close();
 
         return $collection;
     }
 
     /**
-     * @return class-string<\Propel\Runtime\Collection\ArrayCollection>|null
+     * @psalm-return class-string<\Propel\Runtime\Collection\ArrayCollection>
+     *
+     * @return string|null
      */
     #[\Override]
     public function getCollectionClassName(): ?string
     {
-        return '\Propel\Runtime\Collection\ArrayCollection';
+        return ArrayCollection::class;
     }
 
     /**
@@ -102,7 +105,7 @@ class ArrayFormatter extends AbstractFormatterWithHydration
             }
         }
         $this->currentObjects = [];
-        $this->alreadyHydratedObjects = [];
+        $this->localTuplePool = [];
         $dataFetcher->close();
 
         return $result;
