@@ -49,9 +49,9 @@ $ composer dump-autoload
 
 Motivation for Perpl was to make features available around code-style, typing, performance and usability.
 
-## Ready for PHP 8.5
+## Ready for PHP 8.5 and Symfony 8
 
-Code is tested to run in PHP 8.5 without deprecation notices or warnings.
+Code is tested to run in PHP 8.5 and with Symfony 8 without deprecation notices or warnings.
 
 ## Type-preserving queries
 
@@ -123,14 +123,28 @@ Introduces `Criteria::combineFilters()`/`Criteria::endCombineFilters()` which bu
 ```
 Previously, this required to register the individual parts under an arbitrary name using `Criteria::addCond()` and then combining them with `Criteria::combine()`, possibly under another arbitrary name for further processing.
 
-## Read multiple behaviors from same repository
+## Group by queries by relations
 
-Propel restricts reading behaviors from repositories to one per repo. This allows to read multiple behaviors (see [#25](https://github.com/mringler/perpl/pull/25) for details).
+Aggregations can be easily added along one-to-many relations using the generated `useGroupByXXXQuery()` methods:
+```php
+$authors = AuthorQuery::create()
+    ->useGroupByBookQuery()
+        ->addAsColumn('totalBooks', 'COUNT(*)')
+    ->endUse()
+    ->findObjects();
+
+$totalBooks = $authors[0]->getVirtualColumn('totalBooks');
+```
+The main query automatically adds AS-columns from immediate subqueries.
 
 ## Fixed cross-relations
 
 Creates methods for all elements of ternary relation (Propel only uses first foreign key).
 Fixes naming issues and detects duplicates in model method names.
+
+## Read multiple behaviors from same repository
+
+Propel restricts reading behaviors from repositories to one per repo. This allows to read multiple behaviors (see [#25](https://github.com/mringler/perpl/pull/25) for details).
 
 # Contribute
 
