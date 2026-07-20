@@ -43,9 +43,9 @@ class QuotingTest extends TestCaseFixturesDatabase
         $this->assertGreaterThan(0, $group->getId());
 
         if ($this->runningOnPostgreSQL()) {
-            $expected = $this->getSql(sprintf("INSERT INTO `group` (`id`, `title`, `as`) VALUES (%s, 'Test Group', 3)", $group->getId()));
+            $expected = static::toVendorSql(sprintf("INSERT INTO `group` (`id`, `title`, `as`) VALUES (%s, 'Test Group', 3)", $group->getId()));
         } else {
-            $expected = $this->getSql("INSERT INTO `group` (`id`, `title`, `as`) VALUES (NULL, 'Test Group', 3)");
+            $expected = static::toVendorSql("INSERT INTO `group` (`id`, `title`, `as`) VALUES (NULL, 'Test Group', 3)");
         }
         $this->assertEquals($expected, $this->getLastQuery());
     }
@@ -61,7 +61,7 @@ class QuotingTest extends TestCaseFixturesDatabase
         $group->save();
         $group->delete();
 
-        $expected = $this->getSql('DELETE FROM `group` WHERE `group`.`id`=' . $group->getId());
+        $expected = static::toVendorSql('DELETE FROM `group` WHERE `group`.`id`=' . $group->getId());
         $this->assertEquals($expected, $this->getLastQuery());
     }
 
@@ -77,7 +77,7 @@ class QuotingTest extends TestCaseFixturesDatabase
         $group->setAs(2);
         $group->save();
 
-        $expected = $this->getSql('UPDATE `group` SET `as`=2 WHERE `group`.`id`=' . $group->getId());
+        $expected = static::toVendorSql('UPDATE `group` SET `as`=2 WHERE `group`.`id`=' . $group->getId());
         $this->assertEquals($expected, $this->getLastQuery());
     }
 
@@ -89,14 +89,13 @@ class QuotingTest extends TestCaseFixturesDatabase
         $groupQuery = GroupQuery::create();
 
         $groupQuery
-        ->joinAuthor()
         ->useAuthorQuery()
         ->filterByName('Author filter')
         ->endUse()
         ->populateJoinedRelation('Author')
         ->find();
 
-        $expected = $this->getSql("SELECT `group`.`id`, `group`.`title`, `group`.`by`, `group`.`as`, `group`.`author_id`, quoting_author.id, quoting_author.name, quoting_author.type_id FROM `group` LEFT JOIN quoting_author ON (`group`.`author_id`=quoting_author.id) WHERE quoting_author.name='Author filter'");
+        $expected = static::toVendorSql("SELECT `group`.`id`, `group`.`title`, `group`.`by`, `group`.`as`, `group`.`author_id`, quoting_author.id, quoting_author.name, quoting_author.type_id FROM `group` LEFT JOIN quoting_author ON (`group`.`author_id`=quoting_author.id) WHERE quoting_author.name='Author filter'");
         $this->assertEquals($expected, $this->getLastQuery());
     }
 
@@ -108,14 +107,13 @@ class QuotingTest extends TestCaseFixturesDatabase
         $authorQuery = AuthorQuery::create();
 
         $authorQuery
-        ->joinAuthorType()
         ->useAuthorTypeQuery()
         ->filterByTitle('Author type title')
         ->endUse()
         ->populateJoinedRelation('AuthorType')
         ->find();
 
-        $expected = $this->getSql("SELECT quoting_author.id, quoting_author.name, quoting_author.type_id, `quoting_author_type`.`id`, `quoting_author_type`.`title` FROM quoting_author LEFT JOIN `quoting_author_type` ON (quoting_author.type_id=`quoting_author_type`.`id`) WHERE `quoting_author_type`.`title`='Author type title'");
+        $expected = static::toVendorSql("SELECT quoting_author.id, quoting_author.name, quoting_author.type_id, `quoting_author_type`.`id`, `quoting_author_type`.`title` FROM quoting_author LEFT JOIN `quoting_author_type` ON (quoting_author.type_id=`quoting_author_type`.`id`) WHERE `quoting_author_type`.`title`='Author type title'");
         $this->assertEquals($expected, $this->getLastQuery());
     }
 
@@ -131,7 +129,7 @@ class QuotingTest extends TestCaseFixturesDatabase
         ->orderBy('AuthorId')
         ->find();
 
-        $expected = $this->getSql('SELECT `g`.`id`, `g`.`title`, `g`.`by`, `g`.`as`, `g`.`author_id` FROM `group` `g` WHERE `g`.`id` > 0 ORDER BY `g`.`as` ASC,`g`.`author_id` ASC');
+        $expected = static::toVendorSql('SELECT `g`.`id`, `g`.`title`, `g`.`by`, `g`.`as`, `g`.`author_id` FROM `group` `g` WHERE `g`.`id` > 0 ORDER BY `g`.`as` ASC,`g`.`author_id` ASC');
         $this->assertEquals($expected, $this->getLastQuery());
 
         AuthorQuery::create('g')
@@ -141,10 +139,10 @@ class QuotingTest extends TestCaseFixturesDatabase
         ->find();
 
         if ($this->runningOnPostgreSQL()) {
-            $expected = $this->getSql('SELECT g.id, g.name, g.type_id FROM quoting_author g GROUP BY g.id,g.name,g.type_id HAVING g.id > 0');
+            $expected = static::toVendorSql('SELECT g.id, g.name, g.type_id FROM quoting_author g GROUP BY g.id,g.name,g.type_id HAVING g.id > 0');
         } else {
             // note that this only works with MySQL because the query return no data, otherwise an "Expression of SELECT list is not in GROUP BY" error would be thrown
-            $expected = $this->getSql('SELECT g.id, g.name, g.type_id FROM quoting_author g GROUP BY g.id HAVING g.id > 0');
+            $expected = static::toVendorSql('SELECT g.id, g.name, g.type_id FROM quoting_author g GROUP BY g.id HAVING g.id > 0');
         }
         $this->assertEquals($expected, $this->getLastQuery());
 
@@ -152,14 +150,14 @@ class QuotingTest extends TestCaseFixturesDatabase
         ->where('g.As > 0')
         ->find();
 
-        $expected = $this->getSql('SELECT `group`.`id`, `group`.`title`, `group`.`by`, `group`.`as`, `group`.`author_id` FROM `group` WHERE `group`.`as` > 0');
+        $expected = static::toVendorSql('SELECT `group`.`id`, `group`.`title`, `group`.`by`, `group`.`as`, `group`.`author_id` FROM `group` WHERE `group`.`as` > 0');
         $this->assertEquals($expected, $this->getLastQuery());
 
         AuthorQuery::create('g')
         ->where('g.Id > 0')
         ->find();
 
-        $expected = $this->getSql('SELECT quoting_author.id, quoting_author.name, quoting_author.type_id FROM quoting_author WHERE quoting_author.id > 0');
+        $expected = static::toVendorSql('SELECT quoting_author.id, quoting_author.name, quoting_author.type_id FROM quoting_author WHERE quoting_author.id > 0');
         $this->assertEquals($expected, $this->getLastQuery());
     }
 

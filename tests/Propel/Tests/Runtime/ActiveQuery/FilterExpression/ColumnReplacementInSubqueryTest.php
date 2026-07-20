@@ -62,7 +62,7 @@ class ColumnReplacementInSubqueryTest extends TestCaseFixtures
             ->where($inputClause, $value)
         ;
 
-        $expectedSql =  'SELECT book.id, saut.id, saut.first_name, saut.last_name, saut.email, saut.age, saut.MyAsColumn AS MyAsColumn '.
+        $expectedSql =  'SELECT book.id, saut.MyAsColumn AS MyAsColumn '.
                         'FROM book, ' .
                         '(' .
                             'SELECT aut.id AS MyAsColumn ' . 

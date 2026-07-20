@@ -332,7 +332,7 @@ class ModelCriteria extends BaseModelCriteria
         if ($columnNames instanceof AbstractColumnExpression) {
             $this->addGroupByColumn($columnNames);
         } else {
-        foreach ((array)$columnNames as $columnName) {
+            foreach ((array)$columnNames as $columnName) {
                 $this->addGroupByColumn($columnName);
             }
         }
@@ -629,9 +629,9 @@ class ModelCriteria extends BaseModelCriteria
 
         if (in_array($join, $this->joins)) {
             trigger_error("Trying to add same join twice: `$name`", E_USER_WARNING);
-            } else {
-                $this->joins[$name] = $join;
-            }
+        } else {
+            $this->joins[$name] = $join;
+        }
 
         if ($setAlias) {
             $this->addAlias($name, $join->getRightTableName());
@@ -780,7 +780,7 @@ class ModelCriteria extends BaseModelCriteria
             ? new $queryClass()
             : PropelQuery::from($className);
 
-            $modelName = $modelJoin->getRelationMap()?->getName() ?? '';
+        $modelName = $modelJoin->getRelationMap()?->getName() ?? '';
         $useAlias = $relationName !== $modelName || (isset($this->aliases[$relationName]) && $this->aliases[$relationName] === $modelJoin->getRightTableName());
         $childQuery->setModelAlias($relationName, $useAlias);
 
@@ -1023,14 +1023,42 @@ class ModelCriteria extends BaseModelCriteria
      *
      * @see Criteria::addSubquery()
      *
+     * @param \Propel\Runtime\ActiveQuery\Criteria $subQuery
+     * @param string|null $alias alias for the subQuery
+     * @param \Propel\Runtime\ActiveQuery\Join|null $join
+     *
+     * @return $this
+     */
+    #[\Override]
+    public function addSubquery(Criteria $subQuery, ?string $alias = null, Join|null $join = null)
+    {
+        parent::addSubquery($subQuery, $alias);
+        if ($subQuery instanceof BaseModelCriteria && $subQuery->modelAlias) {
+            $subQuery->useAliasInSQL = true;
+        }
+        if ($subQuery instanceof ModelCriteria) {
+            if ($join && !$alias) {
+                $alias = (string)array_key_last($this->subqueries);
+                $join->setRightTableAlias($alias);
+                $join->buildJoinCondition($this); // FIXME : shouldn't need to rebuild here
+            }
+            $subQuery->setParentQuery($this, $join);
+            $subQuery->mergeOnEndUse = false;
+        }
+
+        return $this;
+    }
+
+    /**
+     * @deprecated use aptly named Criteria::addSubquery(), but note that it does not add select columns or replace the main table.
+     *
      * @param \Propel\Runtime\ActiveQuery\Criteria $subQuery Criteria to build the subquery from
      * @param string|null $alias alias for the subQuery
      * @param bool $addAliasAndSelectColumns Set to false if you want to manually add the aliased select columns
      *
      * @return $this
      */
-    #[\Override]
-    public function addSubquery(Criteria $subQuery, ?string $alias = null, bool $addAliasAndSelectColumns = true)
+    public function addSelectQuery(Criteria $subQuery, ?string $alias = null, bool $addAliasAndSelectColumns = true)
     {
         parent::addSubquery($subQuery, $alias);
         if ($subQuery instanceof BaseModelCriteria && $subQuery->modelAlias) {
@@ -1043,29 +1071,15 @@ class ModelCriteria extends BaseModelCriteria
 
         $alias ??= (string)array_key_last($this->subqueries); // get generated alias from parent::addSubquery()
 
-        if ($subQuery->modelTableMapName === $this->modelTableMapName) {
+        if ($subQuery->modelTableMapName === $this->modelTableMapName) { // legacy behavior: outer query passes subquery through
             $this->setModelAlias($alias, true);
         }
 
         $tableMapClassName = $subQuery->modelTableMapName;
         assert($tableMapClassName !== null);
-        $tableMapClassName::getTableMap()->addSelectColumns($this, $alias);
+        $tableMapClassName::getTableMap()->addSelectColumns($this, $alias); // legacy behavior: subquery forces select
 
         return $this;
-    }
-
-    /**
-     * @deprecated use aptly named Criteria::addSubquery().
-     *
-     * @param \Propel\Runtime\ActiveQuery\Criteria $subQueryCriteria Criteria to build the subquery from
-     * @param string|null $alias alias for the subQuery
-     * @param bool $addAliasAndSelectColumns Set to false if you want to manually add the aliased select columns
-     *
-     * @return $this
-     */
-    public function addSelectQuery(Criteria $subQueryCriteria, ?string $alias = null, bool $addAliasAndSelectColumns = true)
-    {
-        return $this->addSubquery($subQueryCriteria, $alias, $addAliasAndSelectColumns);
     }
 
     /**

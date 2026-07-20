@@ -186,7 +186,7 @@ class CriteriaReplaceNameTest extends TestCase
         $joinCondition = 'Author.Id = numberOfBooks.AuthorId';
         
         $authorQuery = AuthorQuery::create()
-        ->addSubquery($numberOfBooksQuery, 'numberOfBooks', false)
+        ->addSubquery($numberOfBooksQuery, 'numberOfBooks')
         ->where($joinCondition)
         ->withColumn('numberOfBooks.NumberOfBooks', 'NumberOfBooks');
 

@@ -745,7 +745,7 @@ class ForeignKey extends MappingModel
      * Returns an array of local and foreign column objects
      * mapped for this foreign key.
      *
-     * @return array
+     * @return array<array{local: \Propel\Generator\Model\Column, foreign: \Propel\Generator\Model\Column|null, value: string|null}>
      */
     public function getColumnObjectsMapping(): array
     {

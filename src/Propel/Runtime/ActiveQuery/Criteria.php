@@ -2035,7 +2035,7 @@ class Criteria
      * to be set before the statement is executed. The reason we do it this way
      * is to let the PDO layer handle all escaping & value formatting.
      *
-     * @param-out array $params
+     * @param-out array<mixed> $params
      *
      * @param array|null $params Parameters that are to be replaced in prepared statement.
      *
