@@ -15,7 +15,6 @@ use Propel\Generator\Model\PropelTypes;
 use Propel\Generator\Model\Table;
 use Propel\Runtime\ActiveQuery\Criteria;
 use Propel\Runtime\ActiveQuery\FilterExpression\FilterFactory;
-use Propel\Runtime\ActiveQuery\ModelJoin;
 use Propel\Runtime\ActiveQuery\TypedModelCriteria;
 use Propel\Runtime\Exception\EntityNotFoundException;
 use Propel\Runtime\Exception\PropelException;
@@ -235,7 +234,6 @@ class QueryBuilder extends AbstractOMBuilder
             Criteria::class,
             Exception::class,
             FilterFactory::class,
-            ModelJoin::class,
             PropelException::class,
             Perpl::class,
             TypedModelCriteria::class,
@@ -1179,8 +1177,11 @@ class QueryBuilder extends AbstractOMBuilder
     {
         $fkTable = $fk->getForeignTable();
         $relationName = $fk->getIdentifier();
+        $joinType = $this->getJoinType($fk);
+        $foreignColumns = array_filter($fk->getForeignColumns());
+        $isToMany = !$fk->isForeignPrimaryKey();
 
-        $this->addUseRelationMethods($script, $fk, $fkTable, $relationName);
+        $this->addUseRelationMethods($script, $joinType, $fkTable, $foreignColumns, $relationName, $isToMany);
     }
 
     /**
@@ -1193,24 +1194,35 @@ class QueryBuilder extends AbstractOMBuilder
      */
     protected function addUseRefFkQuery(string &$script, ForeignKey $fk): void
     {
-        $fkTable = $this->getTable()->getDatabase()->getTable($fk->getTableName());
+        $fkTable = $this->getDatabase()->getTable($fk->getTableName());
         $relationName = $fk->getIdentifierReversed();
+        $joinType = $this->getJoinType($fk);
+        $foreignColumns = $fk->getLocalColumns();
+        $isToMany = !$fk->isLocalPrimaryKey();
 
-        $this->addUseRelationMethods($script, $fk, $fkTable, $relationName);
+        $this->addUseRelationMethods($script, $joinType, $fkTable, $foreignColumns, $relationName, $isToMany);
     }
 
     /**
      * For a given relation, adds the useXXXQuery(), withXXX(), etc methods.
      *
      * @param string $script
-     * @param \Propel\Generator\Model\ForeignKey $fk
+     * @param string $joinType
      * @param \Propel\Generator\Model\Table $fkTable
+     * @param array<string> $foreignColumns
      * @param string $relationName
+     * @param bool $isToMany
      *
      * @return void
      */
-    protected function addUseRelationMethods(string &$script, ForeignKey $fk, Table $fkTable, string $relationName): void
-    {
+    protected function addUseRelationMethods(
+        string &$script,
+        string $joinType,
+        Table $fkTable,
+        array $foreignColumns,
+        string $relationName,
+        bool $isToMany
+    ): void {
         $fkQueryBuilder = $this->getStubQueryBuilder($fkTable);
         $queryClassFq = $this->getClassNameFromBuilder($fkQueryBuilder, true);
 
@@ -1220,7 +1232,9 @@ class QueryBuilder extends AbstractOMBuilder
             'foreignTablePhpName' => $fkTable->getPhpName(),
             'queryClass' => $this->declareClass($queryClassFq),
             'queryClassFq' => $queryClassFq,
-            'joinType' => $this->getJoinType($fk),
+            'joinType' => $joinType,
+            'isToMany' => $isToMany,
+            'foreignKeyTargetColumnNames' => $foreignColumns,
         ]);
     }
 

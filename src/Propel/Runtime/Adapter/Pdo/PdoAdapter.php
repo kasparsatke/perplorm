@@ -27,14 +27,12 @@ use function count;
 use function defined;
 use function explode;
 use function implode;
-use function in_array;
 use function is_array;
 use function is_resource;
 use function is_string;
 use function preg_replace;
 use function rewind;
 use function sprintf;
-use function str_contains;
 use function str_replace;
 use function strpos;
 use function strrpos;
@@ -554,36 +552,6 @@ abstract class PdoAdapter
         }
 
         return $tableName;
-    }
-
-    /**
-     * Returns all selected columns that are selected without an aggregate function.
-     *
-     * @param \Propel\Runtime\ActiveQuery\Criteria $criteria
-     *
-     * @return list<string>
-     */
-    public function getPlainSelectedColumns(Criteria $criteria): array
-    {
-        $selected = [];
-        foreach ($criteria->getSelectColumnsRaw() as $column) {
-            if (!$column instanceof AbstractColumnExpression) {
-                $column = $criteria->resolveColumn($column);
-            }
-            $columnName = $column->getColumnExpressionInQuery();
-
-            if (!str_contains($columnName, '(')) {
-                $selected[] = $columnName;
-            }
-        }
-
-        foreach ($criteria->getAsColumns() as $alias => $columnClause) {
-            if (!str_contains($columnClause, '(') && !in_array($columnClause, $selected, true)) {
-                $selected[] = $alias;
-            }
-        }
-
-        return $selected;
     }
 
     /**

@@ -120,3 +120,39 @@
 
         return $q;
     }
+<?php if ($isToMany): ?>
+
+    /**
+     * Group the <?= $foreignTablePhpName ?> table by <?= $relationName ?> relation and return as useQuery.
+     *
+     * The group query is added as subquery. Use addAsColumn() to add aggregations, for top-level subqueries these automatically become virtual columns.
+     *
+     * <example>Add a total count virtual column: $query->useGroupBy<?= $relationName ?>Query()->addAsColumn('<?= $relationName ?>Total', 'COUNT(*)')->endUse()</example>
+     *
+     * @param string|null $modelAlias Inner and outer alias for subquery.
+     * @param string $joinType
+     *
+     * @return <?= $queryClassFq ?><static>
+     */
+    public function useGroupBy<?= $relationName ?>Query(string|null $modelAlias = null, string $joinType = Criteria::LEFT_JOIN)
+    {
+        /** @var <?= $queryClassFq ?><static> $gbQuery */
+        $gbQuery = <?= $queryClass ?>::create($modelAlias);
+        $modelJoin = $this->createModelJoinForRelation('<?= $relationName ?>', $modelAlias, $joinType);
+        $this->addSubquery($gbQuery, $modelAlias, $modelJoin);
+
+<?php if (count($foreignKeyTargetColumnNames) === 1): ?>
+        $grouping = $gbQuery->resolveLocalColumnByName('<?= reset($foreignKeyTargetColumnNames) ?>');
+<?php else: ?>
+        $grouping = [
+<?php foreach ($foreignKeyTargetColumnNames as $columnName): ?>
+            $gbQuery->resolveLocalColumnByName('<?= $columnName ?>'),
+<?php endforeach; ?>
+        ];
+<?php endif; ?>
+
+        return $gbQuery
+            ->groupBy($grouping)
+            ->select($grouping);
+    }
+<?php endif; ?>

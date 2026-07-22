@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Propel\Runtime\Adapter\Pdo;
 
 use PDO;
+use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression;
 use Propel\Runtime\ActiveQuery\Criteria;
 use Propel\Runtime\ActiveQuery\Lock;
 use Propel\Runtime\Adapter\AdapterInterface;
@@ -20,6 +21,7 @@ use function class_exists;
 use function implode;
 use function in_array;
 use function sprintf;
+use function str_contains;
 use function strtr;
 
 /**
@@ -196,19 +198,49 @@ class PgsqlAdapter extends PdoAdapter implements SqlAdapterInterface
         $selected = $this->getPlainSelectedColumns($criteria);
         $asSelects = $criteria->getAsColumns();
 
-        foreach ($selected as $colName) {
-            if (in_array($colName, $groupBy, true)) {
+        foreach ($selected as $columnName) {
+            if (in_array($columnName, $groupBy, true)) {
                 continue;
             }
             // is a alias there that is grouped?
-            $alias = array_search($colName, $asSelects);
+            $alias = array_search($columnName, $asSelects);
             if ($alias && in_array($alias, $groupBy, true)) {
                 continue; //yes, alias is selected.
             }
-            $groupBy[] = $colName;
+            $groupBy[] = $columnName;
         }
 
         return 'GROUP BY ' . implode(',', $groupBy);
+    }
+
+    /**
+     * Returns all selected columns that are selected without an aggregate function.
+     *
+     * @param \Propel\Runtime\ActiveQuery\Criteria $criteria
+     *
+     * @return list<string>
+     */
+    public function getPlainSelectedColumns(Criteria $criteria): array
+    {
+        $selected = [];
+        foreach ($criteria->getSelectColumnsRaw() as $column) {
+            if (!$column instanceof AbstractColumnExpression) {
+                $column = $criteria->resolveColumn($column, true);
+            }
+            $columnName = $column->getColumnExpressionInQuery(true);
+
+            if (!str_contains($columnName, '(')) {
+                $selected[] = $columnName;
+            }
+        }
+
+        foreach ($criteria->getAsColumns() as $alias => $columnClause) {
+            if (!str_contains($columnClause, '(') && !in_array($columnClause, $selected, true)) {
+                $selected[] = $criteria->isIdentifierQuotingEnabled() ? $this->quoteIdentifier($alias) : $alias;
+            }
+        }
+
+        return $selected;
     }
 
     /**

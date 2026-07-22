@@ -24,7 +24,6 @@ use Propel\Runtime\Exception\ClassNotFoundException;
 use Propel\Runtime\Exception\EntityNotFoundException;
 use Propel\Runtime\Exception\LogicException;
 use Propel\Runtime\Exception\PropelException;
-use Propel\Runtime\Exception\RuntimeException;
 use Propel\Runtime\Exception\UnexpectedValueException;
 use Propel\Runtime\Map\Exception\ColumnNotFoundException;
 use Propel\Runtime\Map\RelationMap;
@@ -91,9 +90,21 @@ class ModelCriteria extends BaseModelCriteria
     public const FORMAT_ON_DEMAND = '\Propel\Runtime\Formatter\OnDemandFormatter';
 
     /**
-     * Parent query (i.e. this is a useQuery)
+     * Parent query (i.e. this is a useQuery or subquery)
      */
-    protected ModelCriteria|null $primaryCriteria = null;
+    protected ModelCriteria|null $parentQuery = null;
+
+    /**
+     * If this is a useQuery or subquery, parentJoin connects it to the (direct) parent query
+     *
+     * @var \Propel\Runtime\ActiveQuery\Join|null
+     */
+    protected Join|null $parentJoin = null;
+
+    /**
+     * If this is a useQuery, merge properties into parent query during {@see static::endUse()}
+     */
+    protected bool $mergeOnEndUse = true;
 
     /**
      * @var class-string<\Exception>
@@ -101,26 +112,9 @@ class ModelCriteria extends BaseModelCriteria
     protected string $entityNotFoundExceptionClass = EntityNotFoundException::class;
 
     /**
-     * This is introduced to prevent useQuery->join from going wrong
-     *
-     * @var \Propel\Runtime\ActiveQuery\Join|null
-     */
-    protected Join|null $previousJoin = null;
-
-    /**
      * Whether to clone the current object before termination methods
      */
     protected bool $isKeepQuery = true;
-
-    /**
-     * Indicates that this query is wrapped in an InnerQueryCriterion.
-     *
-     * Marks the query to be
-     *
-     * @see ModelCriteria::useInnerQueryFilter()
-     * @see ModelCriteria::endUse()
-     */
-    protected bool $isInnerQueryInCriterion = false;
 
     /**
      * Adds a condition on a column based on a column phpName and a value
@@ -323,7 +317,7 @@ class ModelCriteria extends BaseModelCriteria
      *    => $c->addGroupByColumn(BookTableMap::AUTHOR_ID)
      *    => $c->addGroupByColumn(BookTableMap::AUTHOR_NAME)
      *
-     * @param mixed $columnNames an array of columns name (e.g. array('Book.AuthorId', 'Book.AuthorName')) or a single column name (e.g. 'Book.AuthorId')
+     * @param \Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression|array<string|\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression>|string $columnNames an array of columns name (e.g. array('Book.AuthorId', 'Book.AuthorName')) or a single column name (e.g. 'Book.AuthorId')
      *
      * @throws \Propel\Runtime\Exception\PropelException
      *
@@ -335,9 +329,12 @@ class ModelCriteria extends BaseModelCriteria
             throw new PropelException('You must ask for at least one column');
         }
 
-        foreach ((array)$columnNames as $columnName) {
-            $localColumnName = $this->columnResolver->resolveColumn($columnName, true, false)->getColumnExpressionInQuery();
-            $this->addGroupByColumn($localColumnName);
+        if ($columnNames instanceof AbstractColumnExpression) {
+            $this->addGroupByColumn($columnNames);
+        } else {
+            foreach ((array)$columnNames as $columnName) {
+                $this->addGroupByColumn($columnName);
+            }
         }
 
         return $this;
@@ -382,29 +379,53 @@ class ModelCriteria extends BaseModelCriteria
     }
 
     /**
-     * This method returns the previousJoin for this ModelCriteria,
-     * by default this is null, but after useQuery this is set the to the join of that use
+     * In subqueries or useQueries, parent join adds this query to a parent query
      *
-     * @return \Propel\Runtime\ActiveQuery\Join|null the previousJoin for this ModelCriteria
+     * @return \Propel\Runtime\ActiveQuery\Join|null
      */
-    public function getPreviousJoin(): ?Join
+    public function getParentJoin(): ?Join
     {
-        return $this->previousJoin;
+        return $this->parentJoin;
     }
 
     /**
-     * This method sets the previousJoin for this ModelCriteria,
-     * by default this is null, but after useQuery this is set the to the join of that use
+     * Registers a join that adds this query to a parent query
      *
-     * @param \Propel\Runtime\ActiveQuery\Join $previousJoin The previousJoin for this ModelCriteria
+     * @param \Propel\Runtime\ActiveQuery\Join $parentJoin
      *
      * @return $this
      */
-    public function setPreviousJoin(Join $previousJoin)
+    public function setParentJoin(Join $parentJoin)
     {
-        $this->previousJoin = $previousJoin;
+        $this->parentJoin = $parentJoin;
 
         return $this;
+    }
+
+    /**
+     * @deprecated Use aptly named {@see static::setParentJoin()}
+     *
+     * @param \Propel\Runtime\ActiveQuery\Join $parentJoin
+     *
+     * @return $this
+     */
+    public function setPreviousJoin(Join $parentJoin)
+    {
+        trigger_deprecation('Perpl', '2.10.0', 'Use aptly named setParentJoin()');
+
+        return $this->setParentJoin($parentJoin);
+    }
+
+    /**
+     * @deprecated Use aptly named {@see static::getParentJoin()}
+     *
+     * @return \Propel\Runtime\ActiveQuery\Join|null
+     */
+    public function getPreviousJoin(): ?Join
+    {
+        trigger_deprecation('Perpl', '2.10.0', 'Use aptly named getParentJoin()');
+
+        return $this->getParentJoin();
     }
 
     /**
@@ -430,21 +451,17 @@ class ModelCriteria extends BaseModelCriteria
     public function join(string $relationSpecifier, string $joinType = Criteria::INNER_JOIN)
     {
         [$relationIdentifier, $relationAlias] = self::getClassAndAlias($relationSpecifier); // remove alias from "Book b"
-        [$relationMap, $relationName, $leftName, $previousJoin] = $this->resolveJoinContext($relationIdentifier);
+        [$relationMap, $relationName, $leftName, $parentJoin] = $this->resolveJoinContext($relationIdentifier);
         $leftTableAlias = isset($this->aliases[$leftName]) ? $leftName : null;
 
         // set up ModelJoin
         $join = new ModelJoin();
         $join->setJoinType($joinType);
-        if ($previousJoin !== null) {
-            $join->setPreviousJoin($previousJoin);
+        if ($parentJoin instanceof ModelJoin) {
+            $join->setParentJoin($parentJoin);
         }
         $join->setRelationMap($relationMap, $leftTableAlias, $relationAlias);
-
-        if ($relationAlias !== null) {
-            $this->addAlias($relationAlias, $relationMap->getRightTable()->getName());
-        }
-        $this->addJoinObject($join, $relationAlias ?? $relationName);
+        $this->addJoinObject($join, $relationAlias);
 
         return $this;
     }
@@ -461,10 +478,10 @@ class ModelCriteria extends BaseModelCriteria
         if (!str_contains($relationIdentifier, '.')) {
             // simple relation name, refers to the current table
             $leftName = $this->getModelAliasOrName();
-            $previousJoin = $this->getPreviousJoin();
+            $parentJoin = $this->getParentJoin();
             $relationMap = $this->getTableMap()->getRelation($relationIdentifier);
 
-            return [$relationMap, $relationIdentifier, $leftName, $previousJoin];
+            return [$relationMap, $relationIdentifier, $leftName, $parentJoin];
         }
 
         // $relation looks like '$leftName.$relationName $relationAlias'
@@ -473,21 +490,48 @@ class ModelCriteria extends BaseModelCriteria
 
         // find the TableMap for the left table using the $leftName
         if ($leftName === $this->getModelAliasOrName() || $leftName === $this->getModelShortName()) {
-            $previousJoin = $this->getPreviousJoin();
+            $parentJoin = $this->getParentJoin();
             $tableMap = $this->getTableMap();
         } elseif (isset($this->joins[$leftName]) && $this->joins[$leftName] instanceof ModelJoin) {
-            $previousJoin = $this->joins[$leftName];
-            $tableMap = $previousJoin->getTableMap();
+            $parentJoin = $this->joins[$leftName];
+            $tableMap = $parentJoin->getTableMap();
         } elseif (isset($this->joins[$shortLeftName]) && $this->joins[$shortLeftName] instanceof ModelJoin) {
-            $previousJoin = $this->joins[$shortLeftName];
-            $tableMap = $previousJoin->getTableMap();
+            $parentJoin = $this->joins[$shortLeftName];
+            $tableMap = $parentJoin->getTableMap();
         } else {
             throw new PropelException("Unknown table or alias $leftName");
         }
 
         $relationMap = $tableMap->getRelation($relationName);
 
-        return [$relationMap, $relationName, $leftName, $previousJoin];
+        return [$relationMap, $relationName, $leftName, $parentJoin];
+    }
+
+    /**
+     * @param string $relationName
+     * @param string|null $rightTableAlias
+     * @param string|null $joinType
+     *
+     * @return \Propel\Runtime\ActiveQuery\ModelJoin
+     */
+    protected function createModelJoinForRelation(
+        string $relationName,
+        string|null $rightTableAlias = null,
+        string|null $joinType = Criteria::INNER_JOIN
+    ): ModelJoin {
+        $join = new ModelJoin();
+        $join->setJoinType($joinType);
+
+        $relationMap = $this->getTableMapOrFail()->getRelation($relationName);
+        $leftAlias = $this->useAliasInSQL ? $this->getModelAlias() : null;
+        $join->setupJoinCondition($this, $relationMap, $leftAlias, $rightTableAlias);
+
+        $parentJoin = $this->getParentJoin();
+        if ($parentJoin instanceof ModelJoin) {
+            $join->setParentJoin($parentJoin);
+        }
+
+        return $join;
     }
 
     /**
@@ -573,14 +617,24 @@ class ModelCriteria extends BaseModelCriteria
     #[\Override]
     public function addJoinObject(Join $join, ?string $name = null)
     {
-        if (!in_array($join, $this->joins)) { // compare equality, NOT identity
-            if ($name === null) {
-                $this->joins[] = $join;
-            } else {
-                $this->joins[$name] = $join;
-            }
+        $setAlias = (bool)$name;
+
+        if (!$name && $join instanceof ModelJoin) {
+            $name = $join->getRelationMap()->getName();
+        }
+
+        if (!$name) {
+            return parent::addJoinObject($join);
+        }
+
+        if (in_array($join, $this->joins)) {
+            trigger_error("Trying to add same join twice: `$name`", E_USER_WARNING);
         } else {
-            trigger_error("Adding same join twice: `$name`", E_USER_WARNING);
+            $this->joins[$name] = $join;
+        }
+
+        if ($setAlias) {
+            $this->addAlias($name, $join->getRightTableName());
         }
 
         return $this;
@@ -702,70 +756,62 @@ class ModelCriteria extends BaseModelCriteria
     }
 
     /**
-     * Initializes a secondary ModelCriteria object, to be later merged with the current object
-     *
-     * @psalm-param class-string<self>|null $secondaryCriteriaClass
+     * Initializes a child ModelCriteria, to be later merged with the current object
      *
      * @see ModelCriteria::endUse()
      *
      * @param string $relationName Relation name or alias
-     * @param string|null $secondaryCriteriaClass ClassName for the ModelCriteria to be used
+     * @param class-string<self>|null $queryClass ClassName for the ModelCriteria to be used
      *
      * @throws \Propel\Runtime\Exception\PropelException
      *
-     * @return self The secondary criteria object
+     * @return self
      */
-    public function useQuery(string $relationName, ?string $secondaryCriteriaClass = null): self
+    public function useQuery(string $relationName, ?string $queryClass = null): self
     {
         if (!isset($this->joins[$relationName])) {
-            throw new PropelException("Unknown class or alias $relationName");
+            throw new PropelException("Unknown class or alias `$relationName`");
         }
 
         /** @var \Propel\Runtime\ActiveQuery\ModelJoin $modelJoin */
         $modelJoin = $this->joins[$relationName];
         $className = $modelJoin->getTableMap()?->getClassName();
-        $secondaryCriteria = $secondaryCriteriaClass
-            ? new $secondaryCriteriaClass()
+        $childQuery = $queryClass
+            ? new $queryClass()
             : PropelQuery::from($className);
 
-        if ($className !== $relationName) {
-            $modelName = $modelJoin->getRelationMap()?->getName() ?? '';
-            $useAlias = $relationName !== $modelName || (isset($this->aliases[$relationName]) && $this->aliases[$relationName] === $modelJoin->getRightTableName()); // make sure
-            $secondaryCriteria->setModelAlias($relationName, $useAlias);
-        }
-        $secondaryCriteria->filterOperatorManager->setOperator($this->filterOperatorManager->getCurrentPermanentOperator());
-        $secondaryCriteria->setPrimaryCriteria($this, $modelJoin);
+        $modelName = $modelJoin->getRelationMap()?->getName() ?? '';
+        $useAlias = $relationName !== $modelName || (isset($this->aliases[$relationName]) && $this->aliases[$relationName] === $modelJoin->getRightTableName());
+        $childQuery->setModelAlias($relationName, $useAlias);
 
-        return $secondaryCriteria;
+        $childQuery->filterOperatorManager->setOperator($this->filterOperatorManager->getCurrentPermanentOperator());
+        $childQuery->setParentQuery($this, $modelJoin);
+
+        return $childQuery;
     }
 
     /**
-     * Finalizes a secondary criteria and merges it with its primary Criteria
+     * Finalizes a useQuery and merges it with its parent query
      *
      * @see Criteria::mergeWith()
      *
-     * @throws \Propel\Runtime\Exception\RuntimeException
-     *
-     * @return self|null The primary criteria object
+     * @return self|null The parent query
      */
     public function endUse(): ?self
     {
-        if ($this->isInnerQueryInCriterion) {
-            return $this->getPrimaryCriteria();
+        if (!$this->mergeOnEndUse) {
+            return $this->parentQuery;
         }
 
         if (isset($this->aliases[$this->modelAlias])) {
             $this->removeAlias((string)$this->modelAlias);
         }
 
-        $primaryCriteria = $this->getPrimaryCriteria();
-        if ($primaryCriteria === null) {
-            throw new RuntimeException('No primary criteria');
-        }
+        $parentQuery = $this->parentQuery;
+        assert($parentQuery !== null);
+        $parentQuery->mergeWith($this);
 
-        $primaryCriteria->mergeWith($this);
-
-        return $primaryCriteria;
+        return $parentQuery;
     }
 
     /**
@@ -791,8 +837,8 @@ class ModelCriteria extends BaseModelCriteria
 
         /** @var static $innerQuery */
         $innerQuery = ($queryClass === null) ? PropelQuery::from($className) : new $queryClass();
-        $innerQuery->isInnerQueryInCriterion = true;
-        $innerQuery->primaryCriteria = $this;
+        $innerQuery->mergeOnEndUse = false;
+        $innerQuery->parentQuery = $this;
         if ($modelAlias !== null) {
             $innerQuery->setModelAlias($modelAlias, true);
         }
@@ -910,37 +956,66 @@ class ModelCriteria extends BaseModelCriteria
     #[\Override]
     public function clear()
     {
-        $this->primaryCriteria = null;
+        $this->parentQuery = null;
+        $this->parentJoin = null;
+        $this->mergeOnEndUse = true;
 
         return parent::clear();
     }
 
     /**
-     * Sets the primary Criteria for this secondary Criteria
+     * Set parent query of a useQuery or subquery.
      *
-     * @param \Propel\Runtime\ActiveQuery\ModelCriteria $criteria The primary criteria
-     * @param \Propel\Runtime\ActiveQuery\Join|null $previousJoin The previousJoin for this ModelCriteria
+     * @param \Propel\Runtime\ActiveQuery\ModelCriteria $parentQuery
+     * @param \Propel\Runtime\ActiveQuery\Join|null $parentJoin
      *
      * @return $this
      */
-    public function setPrimaryCriteria(ModelCriteria $criteria, ?Join $previousJoin)
+    public function setParentQuery(ModelCriteria $parentQuery, ?Join $parentJoin)
     {
-        $this->primaryCriteria = $criteria;
-        if ($previousJoin) {
-            $this->setPreviousJoin($previousJoin);
+        $this->parentQuery = $parentQuery;
+        if ($parentJoin) {
+            $this->setParentJoin($parentJoin);
         }
 
         return $this;
     }
 
     /**
-     * Gets the primary criteria for this secondary Criteria
+     * Set parent query of useQuery or subquery.
      *
-     * @return \Propel\Runtime\ActiveQuery\ModelCriteria|null The primary criteria
+     * @return \Propel\Runtime\ActiveQuery\ModelCriteria|null
+     */
+    public function getParentQuery(): ?self
+    {
+        return $this->parentQuery;
+    }
+
+    /**
+     * @deprecated Use aptly named {@see static::setParentCriteria()}
+     *
+     * @param \Propel\Runtime\ActiveQuery\ModelCriteria $parentQuery
+     * @param \Propel\Runtime\ActiveQuery\Join|null $parentJoin
+     *
+     * @return $this
+     */
+    public function setPrimaryCriteria(ModelCriteria $parentQuery, ?Join $parentJoin)
+    {
+        trigger_deprecation('Perpl', '2.10.0', 'Use aptly named setParentCriteria()');
+
+        return $this->setParentQuery($parentQuery, $parentJoin);
+    }
+
+    /**
+     * @deprecated Use aptly named {@see static::getParentQuery()}
+     *
+     * @return \Propel\Runtime\ActiveQuery\ModelCriteria|null
      */
     public function getPrimaryCriteria(): ?self
     {
-        return $this->primaryCriteria;
+        trigger_deprecation('Perpl', '2.10.0', 'Use aptly named getParentQuery()');
+
+        return $this->getParentQuery();
     }
 
     /**
@@ -948,14 +1023,42 @@ class ModelCriteria extends BaseModelCriteria
      *
      * @see Criteria::addSubquery()
      *
+     * @param \Propel\Runtime\ActiveQuery\Criteria $subQuery
+     * @param string|null $alias alias for the subQuery
+     * @param \Propel\Runtime\ActiveQuery\Join|null $join
+     *
+     * @return $this
+     */
+    #[\Override]
+    public function addSubquery(Criteria $subQuery, ?string $alias = null, Join|null $join = null)
+    {
+        parent::addSubquery($subQuery, $alias);
+        if ($subQuery instanceof BaseModelCriteria && $subQuery->modelAlias) {
+            $subQuery->useAliasInSQL = true;
+        }
+        if ($subQuery instanceof ModelCriteria) {
+            if ($join && !$alias) {
+                $alias = (string)array_key_last($this->subqueries);
+                $join->setRightTableAlias($alias);
+                $join->buildJoinCondition($this); // FIXME : shouldn't need to rebuild here
+            }
+            $subQuery->setParentQuery($this, $join);
+            $subQuery->mergeOnEndUse = false;
+        }
+
+        return $this;
+    }
+
+    /**
+     * @deprecated use aptly named Criteria::addSubquery(), but note that it does not add select columns or replace the main table.
+     *
      * @param \Propel\Runtime\ActiveQuery\Criteria $subQuery Criteria to build the subquery from
      * @param string|null $alias alias for the subQuery
      * @param bool $addAliasAndSelectColumns Set to false if you want to manually add the aliased select columns
      *
      * @return $this
      */
-    #[\Override]
-    public function addSubquery(Criteria $subQuery, ?string $alias = null, bool $addAliasAndSelectColumns = true)
+    public function addSelectQuery(Criteria $subQuery, ?string $alias = null, bool $addAliasAndSelectColumns = true)
     {
         parent::addSubquery($subQuery, $alias);
         if ($subQuery instanceof BaseModelCriteria && $subQuery->modelAlias) {
@@ -968,29 +1071,15 @@ class ModelCriteria extends BaseModelCriteria
 
         $alias ??= (string)array_key_last($this->subqueries); // get generated alias from parent::addSubquery()
 
-        if ($subQuery->modelTableMapName === $this->modelTableMapName) {
+        if ($subQuery->modelTableMapName === $this->modelTableMapName) { // legacy behavior: outer query passes subquery through
             $this->setModelAlias($alias, true);
         }
 
         $tableMapClassName = $subQuery->modelTableMapName;
         assert($tableMapClassName !== null);
-        $tableMapClassName::getTableMap()->addSelectColumns($this, $alias);
+        $tableMapClassName::getTableMap()->addSelectColumns($this, $alias); // legacy behavior: subquery forces select
 
         return $this;
-    }
-
-    /**
-     * @deprecated use aptly named Criteria::addSubquery().
-     *
-     * @param \Propel\Runtime\ActiveQuery\Criteria $subQueryCriteria Criteria to build the subquery from
-     * @param string|null $alias alias for the subQuery
-     * @param bool $addAliasAndSelectColumns Set to false if you want to manually add the aliased select columns
-     *
-     * @return $this
-     */
-    public function addSelectQuery(Criteria $subQueryCriteria, ?string $alias = null, bool $addAliasAndSelectColumns = true)
-    {
-        return $this->addSubquery($subQueryCriteria, $alias, $addAliasAndSelectColumns);
     }
 
     /**

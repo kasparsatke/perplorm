@@ -15,6 +15,8 @@ use Propel\Generator\Model\Column;
 use Propel\Generator\Model\Database;
 use Propel\Generator\Platform\PlatformInterface;
 use Propel\Generator\Platform\SqlitePlatform;
+use Propel\Runtime\ActiveQuery\Criteria;
+use Propel\Tests\Helpers\Assertion\MatchesFormattedVendorSql;
 use ReflectionClass;
 use ReflectionProperty;
 use function is_object;
@@ -31,6 +33,8 @@ class TestCase extends PHPUnitTestCase
     }
 
     /**
+     * @deprecated Use aptly named {@see static::toVendorSql}
+     *
      * Makes the sql compatible with the current database.
      * Means: replaces ` etc.
      *
@@ -41,6 +45,21 @@ class TestCase extends PHPUnitTestCase
      * @return mixed
      */
     protected static function getSql($sql, $source = 'mysql', $target = null)
+    {
+        return static::toVendorSql($sql, $source, $target);
+    }
+
+    /**
+     * Makes the sql compatible with the current database.
+     * Means: replaces ` etc.
+     *
+     * @param string $sql
+     * @param string $source
+     * @param string|null $target
+     *
+     * @return mixed
+     */
+    public static function toVendorSql($sql, $source = 'mysql', $target = null)
     {
         $target ??= static::getDriver();
 
@@ -55,6 +74,12 @@ class TestCase extends PHPUnitTestCase
         }
 
         return $sql;
+    }
+
+    final protected static function assertVendorSql(string $expectedSql, Criteria $query, string $message = '')
+    {
+        $sql = $query->createSelectSql($params);
+        static::assertThat($sql, new MatchesFormattedVendorSql($expectedSql), $message);
     }
 
     /**

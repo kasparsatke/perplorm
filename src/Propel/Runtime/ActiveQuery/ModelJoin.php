@@ -10,7 +10,7 @@ use Propel\Runtime\ActiveQuery\FilterExpression\JoinCondition;
 use Propel\Runtime\Exception\LogicException;
 use Propel\Runtime\Map\RelationMap;
 use Propel\Runtime\Map\TableMap;
-use function get_class;
+use function trigger_deprecation;
 
 /**
  * A ModelJoin is a Join object tied to a RelationMap object
@@ -30,7 +30,7 @@ class ModelJoin extends Join
     /**
      * @var \Propel\Runtime\ActiveQuery\ModelJoin|null
      */
-    protected $previousJoin;
+    protected $parentJoin;
 
     /**
      * @param \Propel\Runtime\Map\RelationMap $relationMap
@@ -191,9 +191,9 @@ class ModelJoin extends Join
      *
      * @return $this
      */
-    public function setPreviousJoin(ModelJoin $join)
+    public function setParentJoin(ModelJoin $join)
     {
-        $this->previousJoin = $join;
+        $this->parentJoin = $join;
 
         return $this;
     }
@@ -201,9 +201,35 @@ class ModelJoin extends Join
     /**
      * @return self|null
      */
+    public function getParentJoin(): ?self
+    {
+        return $this->parentJoin;
+    }
+
+    /**
+     * @deprecated Use aptly named {@see static::setParentJoin()}
+     *
+     * @param \Propel\Runtime\ActiveQuery\ModelJoin $join
+     *
+     * @return $this
+     */
+    public function setPreviousJoin(ModelJoin $join)
+    {
+        trigger_deprecation('Perpl', '2.10.0', 'Use aptly named setParentJoin()');
+
+        return $this->setParentJoin($join);
+    }
+
+    /**
+     * @deprecated Use aptly named {@see static::getParentJoin()}
+     *
+     * @return self|null
+     */
     public function getPreviousJoin(): ?self
     {
-        return $this->previousJoin;
+        trigger_deprecation('Perpl', '2.10.0', 'Use aptly named getParentJoin()');
+
+        return $this->getParentJoin();
     }
 
     /**
@@ -211,7 +237,7 @@ class ModelJoin extends Join
      */
     public function isPrimary(): bool
     {
-        return $this->previousJoin === null;
+        return $this->parentJoin === null;
     }
 
     /**
@@ -252,31 +278,6 @@ class ModelJoin extends Join
     }
 
     /**
-     * This method returns the last related, but already hydrated object up until this join
-     * Starting from $startObject and continuously calling the getters to get
-     * to the base object for the current join.
-     *
-     * This method only works if PreviousJoin has been defined,
-     * which only happens when you provide dotted relations when calling join
-     *
-     * @param object $startObject the start object all joins originate from and which has already hydrated
-     *
-     * @return object The base Object of this join
-     */
-    public function getObjectToRelate(object $startObject): object
-    {
-        if ($this->isPrimary()) {
-            return $startObject;
-        }
-
-        $previousJoin = $this->getPreviousJoin();
-        $previousObject = $previousJoin->getObjectToRelate($startObject);
-        $method = 'get' . $previousJoin->getRelationMap()->getName();
-
-        return $previousObject->$method();
-    }
-
-    /**
      * @param \Propel\Runtime\ActiveQuery\Join $join
      *
      * @return bool
@@ -287,20 +288,8 @@ class ModelJoin extends Join
         /** @phpstan-var \Propel\Runtime\ActiveQuery\ModelJoin $join */
         return parent::equals($join)
             && $this->relationMap == $join->getRelationMap()
-            && $this->previousJoin == $join->getPreviousJoin()
+            && $this->parentJoin == $join->getParentJoin()
             && $this->rightTableAlias == $join->getRightTableAlias();
-    }
-
-    /**
-     * @return string
-     */
-    public function __toString(): string
-    {
-        return parent::toString()
-            . ' tableMap: ' . ($this->tableMap ? get_class($this->tableMap) : 'null')
-            . ' relationMap: ' . $this->relationMap->getName()
-            . ' previousJoin: ' . ($this->previousJoin ? '(' . $this->previousJoin . ')' : 'null')
-            . ' relationAlias: ' . $this->rightTableAlias;
     }
 
     /**

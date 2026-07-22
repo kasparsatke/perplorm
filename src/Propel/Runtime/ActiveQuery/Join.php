@@ -14,7 +14,6 @@ use function explode;
 use function implode;
 use function is_array;
 use function is_string;
-use function sprintf;
 use function strrpos;
 use function var_export;
 
@@ -760,14 +759,46 @@ class Join
                     $this->getLeftColumn($i) . $this->getOperator($i) . $this->getRightColumn($i),
                 );
             }
-            if ($joinCondition === null) {
-                $joinCondition = $criterion;
-            } else {
-                $joinCondition = $joinCondition->addAnd($criterion);
-            }
+            $joinCondition = !$joinCondition
+                ? $criterion
+                : $joinCondition->addAnd($criterion);
         }
 
         $this->joinCondition = $joinCondition;
+    }
+
+    /**
+     * Build join condition expression like `(book.author_id = author.id)`
+     *
+     * @param-out array<mixed> $params
+     *
+     * @param array<mixed> $params
+     *
+     * @return string
+     */
+    public function buildJoinConditionExpression(array &$params): string
+    {
+        if ($this->joinCondition) {
+            $filter = $this->getJoinCondition();
+            $joinCondition = $filter->buildStatement($params);
+            if ($filter->count() === 1) { // for BC with tests
+                $joinCondition = "($joinCondition)";
+            }
+
+            return $joinCondition;
+        }
+
+        $conditions = [];
+        for ($i = 0; $i < $this->count; $i++) {
+            $operator = $this->getOperator($i);
+            $conditions[] = match (true) {
+                (bool)$this->leftValues[$i] => $this->getLeftColumn($i) . $operator . var_export($this->leftValues[$i], true),
+                (bool)$this->rightValues[$i] => $this->getRightColumn($i) . $operator . var_export($this->rightValues[$i], true),
+                default => $this->getLeftColumn($i) . $operator . $this->getRightColumn($i),
+            };
+        }
+
+        return '(' . implode(' AND ', $conditions) . ')';
     }
 
     /**
@@ -789,38 +820,14 @@ class Join
      */
     public function getClause(array &$params): string
     {
-        if ($this->joinCondition === null) {
-            $conditions = [];
-            for ($i = 0; $i < $this->count; $i++) {
-                if ($this->leftValues[$i]) {
-                    $conditions[] = $this->getLeftColumn($i) . $this->getOperator($i) . var_export($this->leftValues[$i], true);
-                } elseif ($this->rightValues[$i]) {
-                        $conditions[] = $this->getRightColumn($i) . $this->getOperator($i) . var_export($this->rightValues[$i], true);
-                } else {
-                    $conditions[] = $this->getLeftColumn($i) . $this->getOperator($i) . $this->getRightColumn($i);
-                }
-            }
-            $joinCondition = sprintf('(%s)', implode(' AND ', $conditions));
-        } else {
-            $filter = $this->getJoinCondition();
-            $joinCondition = $filter->buildStatement($params);
-            if ($filter->count() === 1) { // for BC with tests
-                $joinCondition = "($joinCondition)";
-            }
-        }
-
+        $joinCondition = $this->buildJoinConditionExpression($params);
         $rightTableName = $this->getRightTableWithAlias();
 
         if ($this->isIdentifierQuotingEnabled()) {
             $rightTableName = $this->getAdapter()->quoteIdentifierTable($rightTableName);
         }
 
-        return sprintf(
-            '%s %s ON %s',
-            $this->getJoinType(),
-            $rightTableName,
-            $joinCondition,
-        );
+        return $this->getJoinType() . " $rightTableName ON $joinCondition";
     }
 
     /**

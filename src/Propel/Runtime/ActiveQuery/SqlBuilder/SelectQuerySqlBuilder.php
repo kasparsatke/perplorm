@@ -71,7 +71,7 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
 
         $groupBy = $this->adapter->getGroupBy($this->criteria);
         if ($groupBy) {
-            $sqlClauses[] = $this->criteria->replaceColumnNames($groupBy);
+            $sqlClauses[] = $groupBy;
         }
 
         $havingSql = $this->buildHavingClause($params);
@@ -110,13 +110,13 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
     }
 
     /**
-     * @param array<mixed>|null $params
+     * @param array<mixed> $params
      * @param array<string> $sourceTableNames
-     * @param array<string> $joinClause
+     * @param array<string> $joinClauses
      *
      * @return string
      */
-    protected function buildFromClause(?array &$params, array $sourceTableNames, array $joinClause): string
+    protected function buildFromClause(array &$params, array $sourceTableNames, array $joinClauses): string
     {
         $sourceTableNames = array_unique(array_filter($sourceTableNames));
 
@@ -142,14 +142,22 @@ class SelectQuerySqlBuilder extends AbstractSqlQueryBuilder
         $sourceTableNames = array_map([$this, 'quoteIdentifierTable'], $sourceTableNames);
 
         foreach ($this->criteria->getSubqueries() as $subQueryAlias => $subQueryCriteria) {
-            $sourceTableNames[] = '(' . $subQueryCriteria->createSelectSql($params) . ') AS ' . $subQueryAlias;
+            $subquerySql = '(' . $subQueryCriteria->createSelectSql($params) . ') AS ' . $subQueryAlias;
+            if ($subQueryCriteria instanceof ModelCriteria && $subQueryCriteria->getParentJoin()) {
+                $join = $subQueryCriteria->getParentJoin();
+                $joinType = $join->getJoinType();
+                $joinCondition = $join->buildJoinConditionExpression($params);
+                $joinClauses[] = "$joinType $subquerySql ON $joinCondition";
+            } else {
+                $sourceTableNames[] = $subquerySql;
+            }
         }
 
-        $glue = ($joinClause && count($sourceTableNames) > 1) ? ' CROSS JOIN ' : ', ';
+        $glue = ($joinClauses && count($sourceTableNames) > 1) ? ' CROSS JOIN ' : ', ';
         $from = 'FROM ' . implode($glue, $sourceTableNames);
 
-        if ($joinClause) {
-            $from .= ' ' . implode(' ', $joinClause);
+        if ($joinClauses) {
+            $from .= ' ' . implode(' ', $joinClauses);
         }
 
         return $from;

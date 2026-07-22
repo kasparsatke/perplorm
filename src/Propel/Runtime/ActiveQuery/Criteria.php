@@ -311,7 +311,7 @@ class Criteria
     /**
      * Storage of grouping data. Collection of column names.
      *
-     * @var array<string>
+     * @var array<string|\Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression>
      */
     protected array $groupByColumns = [];
 
@@ -1514,11 +1514,11 @@ class Criteria
     /**
      * Add group by column name.
      *
-     * @param string $groupBy The name of the column to group by.
+     * @param \Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression|string $groupBy The name of the column to group by.
      *
      * @return $this A modified Criteria object.
      */
-    public function addGroupByColumn(string $groupBy)
+    public function addGroupByColumn(string|AbstractColumnExpression $groupBy)
     {
         $this->groupByColumns[] = $groupBy;
 
@@ -1588,13 +1588,16 @@ class Criteria
     }
 
     /**
-     * Get group by columns.
-     *
      * @return array<string>
      */
     public function getGroupByColumns(): array
     {
-        return $this->groupByColumns;
+        if (!$this->groupByColumns) {
+            return [];
+        }
+        $resolveColumns = fn (string|AbstractColumnExpression $c) => ($c instanceof AbstractColumnExpression ? $c : $this->resolveColumn($c, true, false))->getColumnExpressionInQuery(true);
+
+        return array_map($resolveColumns, $this->groupByColumns);
     }
 
     /**
@@ -2032,7 +2035,7 @@ class Criteria
      * to be set before the statement is executed. The reason we do it this way
      * is to let the PDO layer handle all escaping & value formatting.
      *
-     * @param-out array $params
+     * @param-out array<mixed> $params
      *
      * @param array|null $params Parameters that are to be replaced in prepared statement.
      *

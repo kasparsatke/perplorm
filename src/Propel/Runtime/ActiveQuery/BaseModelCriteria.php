@@ -6,6 +6,7 @@ namespace Propel\Runtime\ActiveQuery;
 
 use ArrayIterator;
 use IteratorAggregate;
+use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\AbstractColumnExpression;
 use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnExpression\UnresolvedColumnExpression;
 use Propel\Runtime\ActiveQuery\ColumnResolver\ColumnResolver;
 use Propel\Runtime\ActiveQuery\ColumnResolver\NormalizedFilterExpression;
@@ -560,6 +561,10 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
             throw new PropelException('You must ask for at least one column');
         }
 
+        if ($columnArray instanceof AbstractColumnExpression) {
+            $columnArray = [$columnArray];
+        }
+
         $this->selectColumns = ($columnArray === '*')
             ? $this->getTableMapOrFail()::buildLocalTableColumnExpressions($this, $this->modelAlias)
             : (array)$columnArray;
@@ -624,19 +629,23 @@ class BaseModelCriteria extends Criteria implements IteratorAggregate
     }
 
     /**
-     * Get the column aliases.
-                 *
-     * @return array<string, string> An assoc array which map the column alias names
-     *               to the alias clauses.
+     * Get the alias columns.
+     *
+     * @return array<string, string> Column alias names to clauses.
      */
     #[\Override]
     public function getAsColumns(): array
     {
         $asColumns = $this->asColumns;
 
-        foreach ($this->subqueries as $subqueryAlias => $subQuery) {
-            foreach ($subQuery->getAsColumns() as $columnAlias => $_) {
-                $asColumns[$columnAlias] = "$subqueryAlias.$columnAlias"; // passes $columnAlias through nested subqueries, but requires unique alias throughout chain
+        if ($this instanceof ModelCriteria && !$this->getParentQuery()) {
+            foreach ($this->subqueries as $subqueryAlias => $subQuery) {
+                foreach ($subQuery->getAsColumns() as $columnAlias => $_) {
+                    if ($this->asColumns[$columnAlias] ?? false) {
+                        continue;
+                    }
+                    $asColumns[$columnAlias] = "$subqueryAlias.$columnAlias"; // passes $columnAlias through nested subqueries, but requires unique alias throughout chain
+                }
             }
         }
 

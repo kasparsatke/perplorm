@@ -212,6 +212,11 @@
       <code><![CDATA[addSelectColumns]]></code>
     </UndefinedMethod>
   </file>
+  <file src="src/Propel/Runtime/ActiveQuery/SqlBuilder/SelectQuerySqlBuilder.php">
+    <ConflictingReferenceConstraint>
+      <code><![CDATA[else {]]></code>
+    </ConflictingReferenceConstraint>
+  </file>
   <file src="src/Propel/Runtime/Adapter/Pdo/MssqlAdapter.php">
     <InvalidArrayOffset>
       <code><![CDATA[$orders[$orderArr[$selColArr[$selColCount]]['key']]]]></code>

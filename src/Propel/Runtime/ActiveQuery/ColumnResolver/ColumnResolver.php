@@ -106,7 +106,7 @@ class ColumnResolver
             return $this->getColumnFromSubQuery($sourceQuery, $sourceQuery->getSubquery($prefix), $prefix, $columnIdentifier, $failSilently);
         }
 
-        if (!$isMainOrJoin && $sourceQuery instanceof ModelCriteria && $sourceQuery->getPrimaryCriteria()) {
+        if (!$isMainOrJoin && $sourceQuery instanceof ModelCriteria && $sourceQuery->getParentQuery()) {
             $resolvedColumn = $this->getQueryFromOuterQuery($sourceQuery, $prefix, $columnIdentifier);
             if ($resolvedColumn) {
                 return $resolvedColumn;
@@ -139,15 +139,15 @@ class ColumnResolver
      */
     protected function getQueryFromOuterQuery(ModelCriteria $sourceQuery, string $prefix, string $columnIdentifier): ?AbstractColumnExpression
     {
-        if (!$sourceQuery->getPrimaryCriteria()) {
+        if (!$sourceQuery->getParentQuery()) {
             return null;
         }
 
         $tableAlias = null;
         $tableMap = null;
         $parentQuery = $sourceQuery;
-        while (!$tableAlias && $parentQuery->getPrimaryCriteria()) {
-            $parentQuery = $parentQuery->getPrimaryCriteria();
+        while (!$tableAlias && $parentQuery->getParentQuery()) {
+            $parentQuery = $parentQuery->getParentQuery();
             [$tableAlias, $tableMap] = $this->resolveTableIdentifierInQuery($prefix, $parentQuery);
         }
 
@@ -198,7 +198,7 @@ class ColumnResolver
      * @param \Propel\Runtime\ActiveQuery\Criteria $sourceQuery
      * @param \Propel\Runtime\ActiveQuery\Criteria $subQuery
      * @param string $tableAlias
-     * @param string $columnPhpName
+     * @param string $columnIdentifier
      * @param bool $failSilently
      *
      * @throws \Propel\Runtime\Exception\PropelException
@@ -209,24 +209,25 @@ class ColumnResolver
         Criteria $sourceQuery,
         Criteria $subQuery,
         string $tableAlias,
-        string $columnPhpName,
+        string $columnIdentifier,
         bool $failSilently = true
     ): AbstractColumnExpression {
-        if ($subQuery->getColumnClauseByAlias($columnPhpName) !== null) {
-            return new RemoteColumnExpression($sourceQuery, $tableAlias, $columnPhpName);
+        if ($subQuery->getColumnClauseByAlias($columnIdentifier) !== null) {
+            return new RemoteColumnExpression($sourceQuery, $tableAlias, $columnIdentifier);
         }
 
         $tableMap = $subQuery instanceof ModelCriteria ? $subQuery->getTableMap() : null;
-        if ($tableMap && $tableMap->hasColumnByPhpName($columnPhpName)) {
-            $columnMap = $tableMap->getColumnByPhpName($columnPhpName);
-
-            return new RemoteTypedColumnExpression($sourceQuery, $tableAlias, $columnMap->getName(), $columnMap->getPdoType(), $columnMap);
+        if ($tableMap) {
+            $columnMap = $tableMap->findColumnByName($columnIdentifier);
+            if ($columnMap) {
+                return new RemoteTypedColumnExpression($sourceQuery, $tableAlias, $columnMap->getName(), $columnMap->getPdoType(), $columnMap);
+            }
         }
 
         if (!$failSilently) {
-            throw new PropelException("Unknown column `$columnPhpName` in the subQuery with alias `$tableAlias`");
+            throw new PropelException("Unknown column `$columnIdentifier` in the subQuery with alias `$tableAlias`");
         }
 
-        return new UnresolvedColumnExpression($sourceQuery, $tableAlias, $columnPhpName);
+        return new UnresolvedColumnExpression($sourceQuery, $tableAlias, $columnIdentifier);
     }
 }

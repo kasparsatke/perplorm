@@ -9,6 +9,7 @@
 namespace Propel\Tests\Runtime\ActiveQuery;
 
 use Propel\Runtime\ActiveQuery\ModelCriteria;
+use Propel\Runtime\Exception\PropelException;
 use Propel\Runtime\Propel;
 use Propel\Tests\Bookstore\AuthorQuery;
 use Propel\Tests\Bookstore\BookQuery;
@@ -36,7 +37,7 @@ class ModelCriteriaUseQueryTest extends BookstoreTestBase
 
         $c2 = $c->useQuery('Author');
         $this->assertTrue($c2 instanceof AuthorQuery, 'useQuery() returns a secondary Criteria');
-        $this->assertEquals($c, $c2->getPrimaryCriteria(), 'useQuery() sets the primary Criteria os the secondary Criteria');
+        $this->assertEquals($c, $c2->getParentQuery(), 'useQuery() sets the primary Criteria os the secondary Criteria');
         $c2->where('Author.FirstName = ?', 'john');
         $c2->limit(5);
 
@@ -70,7 +71,7 @@ class ModelCriteriaUseQueryTest extends BookstoreTestBase
 
         $c2 = $c->useQuery('a');
         $this->assertTrue($c2 instanceof AuthorQuery, 'useQuery() returns a secondary Criteria');
-        $this->assertEquals($c, $c2->getPrimaryCriteria(), 'useQuery() sets the primary Criteria os the secondary Criteria');
+        $this->assertEquals($c, $c2->getParentQuery(), 'useQuery() sets the primary Criteria os the secondary Criteria');
         $this->assertEquals(['a' => 'author'], $c2->getAliases(), 'useQuery() sets the secondary Criteria alias correctly');
         $c2->where('a.FirstName = ?', 'john');
         $c2->limit(5);
@@ -122,7 +123,7 @@ class ModelCriteriaUseQueryTest extends BookstoreTestBase
         $c->leftJoin('Propel\Tests\Bookstore\BookstoreContest.Work');
         $c2 = $c->useQuery('Work');
         $this->assertTrue($c2 instanceof BookQuery, 'useQuery() returns a secondary Criteria');
-        $this->assertEquals($c, $c2->getPrimaryCriteria(), 'useQuery() sets the primary Criteria os the secondary Criteria');
+        $this->assertEquals($c, $c2->getParentQuery(), 'useQuery() sets the primary Criteria os the secondary Criteria');
         //$this->assertEquals(array('a' => 'author'), $c2->getAliases(), 'useQuery() sets the secondary Criteria alias correctly');
         $c2->where('Work.Title = ?', 'War And Peace');
 
@@ -146,7 +147,7 @@ class ModelCriteriaUseQueryTest extends BookstoreTestBase
         $c->leftJoin('Propel\Tests\Bookstore\BookstoreContest.Work w');
         $c2 = $c->useQuery('w');
         $this->assertTrue($c2 instanceof BookQuery, 'useQuery() returns a secondary Criteria');
-        $this->assertEquals($c, $c2->getPrimaryCriteria(), 'useQuery() sets the primary Criteria os the secondary Criteria');
+        $this->assertEquals($c, $c2->getParentQuery(), 'useQuery() sets the primary Criteria os the secondary Criteria');
         $this->assertEquals(['w' => 'book'], $c2->getAliases(), 'useQuery() sets the secondary Criteria alias correctly');
         $c2->where('w.Title = ?', 'War And Peace');
 
@@ -183,5 +184,12 @@ class ModelCriteriaUseQueryTest extends BookstoreTestBase
         $expectedSQL = $this->getSql("SELECT $columns FROM book LEFT JOIN author ON (book.author_id=author.id) WHERE ((book.price=:p1 OR (author.age=:p2 OR author.first_name=:p3)) OR book.title=:p4) AND book.isbn=:p5");
 
         $this->assertEquals($expectedSQL, $sql);
+    }
+
+    public function testExceptionOnUnknownRelation(): void
+    {
+        $this->expectException(PropelException::class);
+        $this->expectExceptionMessage('Unknown class or alias `LeUnknownRelation`');
+        BookQuery::create()->useQuery('LeUnknownRelation');
     }
 }
