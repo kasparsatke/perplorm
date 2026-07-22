@@ -628,6 +628,14 @@ class Column extends MappingModel
     }
 
     /**
+     * @return bool
+     */
+    public function hasCustomPhpName(): bool
+    {
+        return $this->phpName && !$this->namePrefix && $this->phpName !== $this->buildPhpName();
+    }
+
+    /**
      * @return string
      */
     public function buildPhpName(): string

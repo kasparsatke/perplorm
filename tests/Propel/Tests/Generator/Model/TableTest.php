@@ -8,12 +8,16 @@
 
 namespace Propel\Tests\Generator\Model;
 
+use PHPUnit\Framework\Attributes\DataProvider;
+use Propel\Generator\Config\QuickGeneratorConfig;
 use Propel\Generator\Exception\EngineException;
 use Propel\Generator\Exception\InvalidArgumentException;
 use Propel\Generator\Model\Column;
 use Propel\Generator\Model\Database;
 use Propel\Generator\Model\Index;
+use Propel\Generator\Model\Schema;
 use Propel\Generator\Model\Table;
+use Propel\Tests\TestCase;
 
 /**
  * Unit test suite for Table model class.
@@ -1075,5 +1079,49 @@ class TableTest extends ModelTestCase
             ->will($this->returnValue($options['pg_transaction']));
 
         return $column;
+    }
+
+    public static function HasCustomPhpNameDataProvider(): array
+    {
+        /** @var array<array{Table, bool, string}> */
+        $data = [];
+
+        $data[] = [new Table('foo'), false, 'Default name is not custom.'];
+
+        $table = new Table('foo');
+        $table->setPhpName('Foo');
+        $data[] = [$table, false, 'Manually set default name is still default.'];
+
+        $table = new Table('foo');
+        $table->setPhpName('foo');
+        $data[] = [$table, true, 'Custom name should be case sensitive.'];
+
+        $table = new Table('foo');
+        $table->setPhpName('NotFoo');
+        $data[] = [$table, true, 'Has custom value.'];
+
+        $table = new Table('foo');
+        $table->setPhpName('Foo');
+        $table->setCommonName('bar'); // sets Table::originCommonName which stores name from schema
+        $data[] = [$table, true, 'Custom name is checked against original name.'];
+
+        $config = new QuickGeneratorConfig(['propel.generator.schema.autoPrefix' => true]);
+        $schema = new Schema();
+        $schema->setGeneratorConfig($config);
+        $db = new Database();
+        $schema->addDatabase($db);
+        $table = new Table('foo');
+        $table->setDatabase($db);
+        $table->setSchema('Le');
+        $table->getPhpName(); // setup default phpname 
+        $data[] = [$table, true, 'Prefixed table name is custom.'];
+
+        return $data;
+    }
+
+    #[DataProvider('HasCustomPhpNameDataProvider')]
+    public function testHasCustomPhpName(Table $table, bool $expected, string $description): void
+    {
+        $this->assertSame($expected, $table->hasCustomPhpName(), $description);
     }
 }

@@ -23,12 +23,12 @@ class SchemaReaderJoinSchemaTest extends TestCase
 <?xml version="1.0" encoding="utf-8"?>
 <app-data>
   <database name="default" defaultIdMethod="native" schema="foo" defaultPhpNamingMethod="underscore">
-    <table name="table1" idMethod="native" phpName="Table1">
-      <column name="id" phpName="Id" type="INTEGER" primaryKey="true" autoIncrement="true" required="true"/>
+    <table name="table1">
+      <column name="id" type="INTEGER" primaryKey="true" autoIncrement="true" required="true"/>
     </table>
-    <table name="table2" schema="bar" idMethod="native" phpName="Table2">
-      <column name="id" phpName="Id" type="INTEGER" primaryKey="true" autoIncrement="true" required="true"/>
-      <column name="table1_id" phpName="Table1Id" type="INTEGER"/>
+    <table name="table2" schema="bar">
+      <column name="id" type="INTEGER" primaryKey="true" autoIncrement="true" required="true"/>
+      <column name="table1_id" type="INTEGER"/>
       <foreign-key foreignTable="table1" foreignSchema="foo" name="table2_fk_6e7121">
         <reference local="table1_id" foreign="id"/>
       </foreign-key>

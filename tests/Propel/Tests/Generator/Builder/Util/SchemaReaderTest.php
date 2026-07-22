@@ -96,8 +96,8 @@ EOF;
 <?xml version="1.0" encoding="utf-8"?>
 <app-data>
   <database name="foo" defaultIdMethod="native" defaultPhpNamingMethod="underscore">
-    <table name="bar" idMethod="native" phpName="Bar">
-      <column name="id" phpName="Id" type="INTEGER" primaryKey="true" autoIncrement="true" required="true"/>
+    <table name="bar">
+      <column name="id" type="INTEGER" primaryKey="true" autoIncrement="true" required="true"/>
     </table>
   </database>
 </app-data>
@@ -118,8 +118,8 @@ EOF;
 <?xml version="1.0" encoding="utf-8"?>
 <app-data>
   <database name="foo" defaultIdMethod="native" defaultPhpNamingMethod="underscore">
-    <table name="bar" idMethod="native" phpName="Bar">
-      <column name="id" phpName="Id" type="INTEGER" primaryKey="true" autoIncrement="true" required="true"/>
+    <table name="bar">
+      <column name="id" type="INTEGER" primaryKey="true" autoIncrement="true" required="true"/>
     </table>
   </database>
 </app-data>
@@ -137,11 +137,11 @@ EOF;
 <?xml version="1.0" encoding="utf-8"?>
 <app-data>
   <database name="foo" defaultIdMethod="native" defaultPhpNamingMethod="underscore">
-    <table name="bar1" idMethod="native" phpName="Bar1">
-      <column name="id" phpName="Id" type="INTEGER" primaryKey="true" autoIncrement="true" required="true"/>
+    <table name="bar1">
+      <column name="id" type="INTEGER" primaryKey="true" autoIncrement="true" required="true"/>
     </table>
-    <table name="bar2" idMethod="native" phpName="Bar2" skipSql="true" forReferenceOnly="true">
-      <column name="id" phpName="Id" type="INTEGER" primaryKey="true" autoIncrement="true" required="true"/>
+    <table name="bar2" skipSql="true" forReferenceOnly="true">
+      <column name="id" type="INTEGER" primaryKey="true" autoIncrement="true" required="true"/>
     </table>
   </database>
 </app-data>

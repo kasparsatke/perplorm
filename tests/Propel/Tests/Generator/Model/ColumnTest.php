@@ -9,12 +9,14 @@
 namespace Propel\Tests\Generator\Model;
 
 use PDO;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Propel\Generator\Exception\EngineException;
 use Propel\Generator\Exception\SchemaException;
 use Propel\Generator\Model\Column;
 use Propel\Generator\Model\PropelTypes;
 use Propel\Tests\Helpers\ColorsBackedEnum;
 use Propel\Tests\Helpers\ColorsUnitEnum;
+use Propel\Tests\TestCase;
 
 /**
  * Tests for package handling.
@@ -1173,5 +1175,41 @@ class ColumnTest extends ModelTestCase
         $this->expectException(SchemaException::class);
         $this->expectExceptionMessage('Column `table.foo`: Combining binary ENUM/SET type with a PHP enum type (`phpType="Propel\Tests\Helpers\ColorsUnitEnum"` is not supported');
         $this->buildColumnFromSchema('<column name="foo" type="ENUM_BINARY" phpType="' . ColorsUnitEnum::class. '"/>');
+    }
+
+    public static function HasCustomPhpNameDataProvider(): array
+    {
+        /** @var array<array{Column, bool, string}> */
+        $data = [];
+
+        $data[] = [new Column('foo'), false, 'Default name is not custom.'];
+
+        $column = new Column('foo');
+        $column->setPhpName('Foo');
+        $data[] = [$column, false, 'Manually set default name is still default.'];
+
+        $column = new Column('foo');
+        $column->setPhpName(null);
+        $data[] = [$column, false, 'No PhpName'];
+
+        $column = new Column('foo');
+        $column->setPhpName('foo');
+        $data[] = [$column, true, 'Custom name should be case sensitive.'];
+
+        $column = new Column('foo');
+        $column->setPhpName('NotFoo');
+        $data[] = [$column, true, 'Has custom value.'];
+
+        $column = new Column('foo');
+        (new TestCase(''))->setObjectPropertyValue($column, 'namePrefix', 'col');
+        $data[] = [$column, false, 'Prefixed name is not default.'];
+
+        return $data;
+    }
+
+    #[DataProvider('HasCustomPhpNameDataProvider')]
+    public function testHasCustomPhpName(Column $column, bool $expected, string $description): void
+    {
+        $this->assertSame($expected, $column->hasCustomPhpName(), $description);
     }
 }
